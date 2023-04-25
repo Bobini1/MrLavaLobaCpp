@@ -31,6 +31,9 @@ target_compile_features(MrLavaLoba_lib PUBLIC cxx_std_20)
 find_package(fmt REQUIRED)
 target_link_libraries(MrLavaLoba_lib PRIVATE fmt::fmt)
 
+find_package(Eigen3 REQUIRED)
+target_link_libraries(MrLavaLoba_lib PRIVATE Eigen3::Eigen)
+
 # ---- Declare executable ----
 
 add_executable(MrLavaLoba_exe source/main.cpp)

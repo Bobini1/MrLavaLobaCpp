@@ -1,4 +1,5 @@
 #include "lib.hpp"
+#include <Eigen/Dense>
 
 #include <fmt/core.h>
 

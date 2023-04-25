@@ -1,0 +1,51 @@
+{
+ "graph_lock": {
+  "nodes": {
+   "0": {
+    "options": "eigen:MPL2_only=False\nfmt:fPIC=True\nfmt:header_only=False\nfmt:shared=False\nfmt:with_fmt_alias=False\nfmt:with_os_api=True\nshapelib:fPIC=True\nshapelib:shared=False",
+    "requires": [
+     "1",
+     "2",
+     "3"
+    ],
+    "build_requires": [
+     "4"
+    ],
+    "path": "conanfile.py",
+    "context": "host"
+   },
+   "1": {
+    "ref": "fmt/9.1.0",
+    "options": "fPIC=True\nheader_only=False\nshared=False\nwith_fmt_alias=False\nwith_os_api=True",
+    "package_id": "e0e003fc38e6dcc03cdfbaf52057d71baa23adad",
+    "prev": "0",
+    "context": "host"
+   },
+   "2": {
+    "ref": "eigen/3.4.0",
+    "options": "MPL2_only=False",
+    "package_id": "5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9",
+    "prev": "0",
+    "context": "host"
+   },
+   "3": {
+    "ref": "shapelib/1.5.0",
+    "options": "fPIC=True\nshared=False",
+    "package_id": "d13c97721d7bdc192ca6529684f2b79beeae8a7c",
+    "prev": "0",
+    "modified": true,
+    "context": "host"
+   },
+   "4": {
+    "ref": "catch2/3.3.1",
+    "options": "console_width=80\ndefault_reporter=None\nfPIC=True\nshared=False\nwith_prefix=False",
+    "package_id": "6b952e07b144105007d6beb6165b6d6b25ff4787",
+    "prev": "0",
+    "context": "host"
+   }
+  },
+  "revisions_enabled": false
+ },
+ "version": "0.4",
+ "profile_host": "[settings]\narch=x86_64\narch_build=x86_64\nbuild_type=Debug\ncompiler=gcc\ncompiler.libcxx=libstdc++\ncompiler.version=12\nos=Linux\nos_build=Linux\n[options]\n[build_requires]\n[env]\n"
+}
