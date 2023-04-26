@@ -69,7 +69,7 @@ auto getDesc() {
                                                                                             "If true, the thickness of the lobes is assigned. "
                                                                                             "Otherwise, the area of the lobes is assigned")
                               ("lobe_area", boost::program_options::value<double>(), "Area of each lobe ( only effective when volume_flag = false or fixed_dimension_flag = true )")
-                                ("lobe_area", boost::program_options::value<double>(), "Thickness of each lobe ( only effective when volume_flag = 0 or fixed_dimension_flag  2 )")
+                                ("lobe_area", boost::program_options::value<double>(), "Thickness of each lobe ( only effective when volume_flag = false or fixed_dimension_flag  true )")
                                   ("thickness_ratio", boost::program_options::value<double>(), "Ratio between the thickness of the first lobe of the flow and the thickness of the "
                                                                                                "last lobe.\n"
                                                                                                "thickness_ratio < 1   => the thickness increases with lobe \"age\"\n"
