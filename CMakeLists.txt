@@ -34,6 +34,13 @@ target_link_libraries(MrLavaLoba_lib PRIVATE fmt::fmt)
 find_package(Eigen3 REQUIRED)
 target_link_libraries(MrLavaLoba_lib PRIVATE Eigen3::Eigen)
 
+find_package(Boost REQUIRED)
+target_link_libraries(MrLavaLoba_lib PRIVATE Boost::program_options)
+
+
+find_package(shapelib REQUIRED)
+target_link_libraries(MrLavaLoba_lib PRIVATE shapelib::shp)
+
 # ---- Declare executable ----
 
 add_executable(MrLavaLoba_exe source/main.cpp)
