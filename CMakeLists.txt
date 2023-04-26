@@ -29,21 +29,21 @@ target_include_directories(
 target_compile_features(MrLavaLoba_lib PUBLIC cxx_std_20)
 
 find_package(fmt REQUIRED)
-target_link_libraries(MrLavaLoba_lib PRIVATE fmt::fmt)
+target_link_libraries(MrLavaLoba_lib PUBLIC fmt::fmt)
 
 find_package(Eigen3 REQUIRED)
-target_link_libraries(MrLavaLoba_lib PRIVATE Eigen3::Eigen)
+target_link_libraries(MrLavaLoba_lib PUBLIC Eigen3::Eigen)
 
 find_package(Boost REQUIRED)
-target_link_libraries(MrLavaLoba_lib PRIVATE Boost::program_options)
+target_link_libraries(MrLavaLoba_lib PUBLIC Boost::program_options)
 
 
 find_package(shapelib REQUIRED)
-target_link_libraries(MrLavaLoba_lib PRIVATE shapelib::shp)
+target_link_libraries(MrLavaLoba_lib PUBLIC shapelib::shp)
 
 # ---- Declare executable ----
 
-add_executable(MrLavaLoba_exe source/main.cpp)
+add_executable(MrLavaLoba_exe source/main.cpp source/Params.cpp source/Params.hpp)
 add_executable(MrLavaLoba::exe ALIAS MrLavaLoba_exe)
 
 set_property(TARGET MrLavaLoba_exe PROPERTY OUTPUT_NAME MrLavaLoba)
