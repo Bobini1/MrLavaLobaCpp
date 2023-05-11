@@ -192,27 +192,35 @@ main(int argc, char** argv) -> int
     // values = [float(h.split(" ")[-1].strip()) for h in hdr]
     // del hdr
 
-    auto source = std::ifstream{ params["input_file"].as<std::string>() };
-    auto line = std::string{};
-    std::getline(source, line);
+    auto source = params["input_file"].as<std::string>();
     auto values = std::array<double, 6>{};
-    for (auto i = 0; i < 6; ++i) {
-        std::getline(source, line);
-        auto lastSpace = line.find_last_of(" ");
-        values[i] = std::stod(line.substr(lastSpace + 1));
+    {
+        auto sourceStream = std::ifstream{ source };
+        auto line = std::string{};
+        std::getline(sourceStream, line);
+        for (auto i = 0; i < 6; ++i) {
+            std::getline(sourceStream, line);
+            auto lastSpace = line.find_last_of(' ');
+            values[i] = std::stod(line.substr(lastSpace + 1));
+        }
     }
-
 
     auto [cols, rows, lx, ly, cell, nd] = values;
 
     cols = std::round(cols);
     rows = std::round(rows);
 
-    auto crop_flag = params.contains("west_to_vent") && params.contains("east_to_vent") &&
+    auto cropFlag = params.contains("west_to_vent") && params.contains("east_to_vent") &&
                      params.contains("south_to_vent") && params.contains("north_to_vent");
 
     auto start = std::chrono::high_resolution_clock::now();
 
+    // get number of rows and cols in source file
+    auto [cols, rows] = getColsRows(params["input_file"].as<std::string>());
+
+    if (cropFlag) {
+
+    }
 
 
 
