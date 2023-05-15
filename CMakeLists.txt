@@ -37,13 +37,18 @@ target_link_libraries(MrLavaLoba_lib PUBLIC Eigen3::Eigen)
 find_package(Boost REQUIRED)
 target_link_libraries(MrLavaLoba_lib PUBLIC Boost::program_options)
 
+find_package(GSL REQUIRED)
+target_link_libraries(MrLavaLoba_lib PUBLIC GSL::gsl GSL::gslcblas)
+
+
+
 
 find_package(shapelib REQUIRED)
 target_link_libraries(MrLavaLoba_lib PUBLIC shapelib::shp)
 
 # ---- Declare executable ----
 
-add_executable(MrLavaLoba_exe source/main.cpp source/Params.cpp source/Params.hpp)
+add_executable(MrLavaLoba_exe source/main.cpp source/Params.cpp source/Params.hpp source/rtnorm.cpp source/rtnorm.hpp)
 add_executable(MrLavaLoba::exe ALIAS MrLavaLoba_exe)
 
 set_property(TARGET MrLavaLoba_exe PROPERTY OUTPUT_NAME MrLavaLoba)

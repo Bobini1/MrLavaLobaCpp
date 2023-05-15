@@ -6,62 +6,25 @@
 #include <fstream>
 #include <Eigen/Dense>
 #include <filesystem>
+#include <random>
+#include <unsupported/Eigen/CXX11/Tensor>
+#include <unsupported/Eigen/KroneckerProduct>
+
 #include "Params.hpp"
+#include "rtnorm.hpp"
 
 auto
-calculateCumFissLength(
-  const std::vector<int>& xVent,
-  const std::vector<int>& yVent,
-  const std::optional<std::vector<int>>& xVentEnd,
-  const std::optional<std::vector<int>>& yVentEnd,
-  int ventFlag,
-  int nVents,
-  const std::optional<std::vector<double>>& fissureProbabilities)
-  -> Eigen::Vector2d
+calculateCumFissLength(const std::vector<int>& xVent,
+                       const std::vector<int>& yVent,
+                       int nVents) -> Eigen::VectorXd
 {
-    auto xVentEndMode =
-      xVentEnd.has_value() && !xVentEnd->empty() && ventFlag > 3;
-    auto [firstJ, cumFissLength] = [&]() {
-        if (xVentEndMode) {
-            return std::make_pair(0, Eigen::Vector2d::Zero(nVents + 1).eval());
-        }
-        return std::make_pair(1, Eigen::Vector2d::Zero(nVents).eval());
-    }();
-
-    for (auto j = firstJ; j < nVents; ++j) {
-        if (xVentEndMode) {
-            auto deltaXVent = xVentEnd->at(j) - xVent[j];
-            auto deltaYVent = yVentEnd->at(j) - yVent[j];
-            cumFissLength[j + 1] =
-              cumFissLength[j] +
-              std::sqrt(deltaXVent * deltaXVent + deltaYVent * deltaYVent);
-        } else {
-            auto deltaXVent = xVent[j] - xVent[j - 1];
-            auto deltaYVent = yVent[j] - yVent[j - 1];
-            cumFissLength[j] =
-              cumFissLength[j - 1] +
-              std::sqrt(deltaXVent * deltaXVent + deltaYVent * deltaYVent);
-        }
-        return cumFissLength;
-    }
-
-    if (fissureProbabilities.has_value() && ventFlag > 5) {
-        auto fissureProbabilitiesCum =
-          Eigen::Vector2d::Zero(fissureProbabilities->size()).eval();
-        fissureProbabilitiesCum[0] = (*fissureProbabilities)[0];
-        for (auto j = 1; j < fissureProbabilities->size(); ++j) {
-            fissureProbabilitiesCum[j] =
-              fissureProbabilitiesCum[j - 1] + fissureProbabilities->at(j);
-        }
-        if (ventFlag == 8) {
-            // cumulative sum
-            cumFissLength = fissureProbabilitiesCum;
-        } else if (ventFlag > 5) {
-            // keep first element, copy the rest from fissureProbabilitiesCum
-            for (auto j = 1; j < fissureProbabilities->size(); ++j) {
-                cumFissLength[j] = fissureProbabilitiesCum[j];
-            }
-        }
+    auto cumFissLength = Eigen::VectorXd::Zero(nVents).eval();
+    for (auto j = 1; j < nVents; ++j) {
+        auto deltaXVent = xVent[j] - xVent[j - 1];
+        auto deltaYVent = yVent[j] - yVent[j - 1];
+        cumFissLength[j] =
+          cumFissLength[j - 1] +
+          std::sqrt(deltaXVent * deltaXVent + deltaYVent * deltaYVent);
     }
 
     if (nVents > 1) {
@@ -87,6 +50,126 @@ createBackup(const std::string& fileName) -> void
 }
 
 auto
+loadTxt(const std::string& filename,
+        size_t rows,
+        size_t cols,
+        size_t skipRows = 0) -> Eigen::MatrixXd
+{
+    auto file = std::ifstream(filename);
+    if (!file) {
+        throw std::runtime_error("Could not open file: " + filename);
+    }
+    auto line = std::string();
+    auto matrix = Eigen::MatrixXd::Zero(rows, cols).eval();
+    auto i = 0;
+    while (std::getline(file, line)) {
+        if (i >= skipRows) {
+            auto j = 0;
+            auto lineStream = std::stringstream(line);
+            auto value = std::string();
+            while (std::getline(lineStream, value, ' ')) {
+                matrix(i - skipRows, j) = std::stod(value);
+                ++j;
+            }
+        }
+        ++i;
+    }
+    return matrix;
+}
+
+auto
+ellipse(double xc,
+        double yc,
+        double ax1,
+        double ax2,
+        double angle,
+        Eigen::MatrixXd X_circle,
+        Eigen::MatrixXd Y_circle) -> std::pair<Eigen::MatrixXd, Eigen::MatrixXd>
+{
+    auto cos_angle = std::cos(angle * M_PI / 180);
+    auto sin_angle = std::sin(angle * M_PI / 180);
+
+    auto x1 = xc + ax1 * cos_angle;
+    auto y1 = yc + ax1 * sin_angle;
+
+    auto x2 = xc - ax2 * sin_angle;
+    auto y2 = yc + ax2 * cos_angle;
+
+    auto X = (ax1 * X_circle).eval();
+    auto Y = (ax2 * Y_circle).eval();
+
+    auto xe = (x1 + X.array() * cos_angle - Y.array() * sin_angle).eval();
+    auto ye = (y1 + X.array() * sin_angle + Y.array() * cos_angle).eval();
+
+    return { xe, ye };
+}
+
+auto
+localIntersection(const Eigen::MatrixXd& XsLocal,
+                  const Eigen::MatrixXd& YsLocal,
+                  double xcE,
+                  double ycE,
+                  double ax1,
+                  double ax2,
+                  double angle,
+                  const Eigen::VectorXd& xv,
+                  const Eigen::VectorXd& yv,
+                  double nv2) -> Eigen::MatrixXd
+{
+    auto nxCell = XsLocal.rows();
+    auto nyCell = XsLocal.cols();
+
+    auto c = std::cos(angle * M_PI / 180.0);
+    auto s = std::sin(angle * M_PI / 180.0);
+
+    auto c1 = c / ax1;
+    auto s1 = s / ax1;
+
+    auto c2 = c / ax2;
+    auto s2 = s / ax2;
+
+    Eigen::VectorXd xvLocal = xv.array() - xcE;
+    Eigen::VectorXd yvLocal = yv.array() - ycE;
+
+    Eigen::VectorXd XsLocal1d =
+      Eigen::Map<const Eigen::VectorXd>(XsLocal.data(), XsLocal.size());
+    Eigen::VectorXd YsLocal1d =
+      Eigen::Map<const Eigen::VectorXd>(YsLocal.data(), YsLocal.size());
+
+    Eigen::VectorXd c1xvPS1yv = c1 * xvLocal.array() + s1 * yvLocal.array();
+    Eigen::VectorXd c2yvMS2yv = c2 * yvLocal.array() - s2 * xvLocal.array();
+
+    Eigen::VectorXd term1 = (c1 * c1 + s2 * s2) * XsLocal1d.array().square();
+    Eigen::VectorXd term2 =
+      (2.0 * c1 * s1 - 2.0 * c2 * s2) * XsLocal1d.array() * YsLocal1d.array();
+    Eigen::MatrixXd term3 = Eigen::kroneckerProduct(
+      XsLocal1d, 2.0 * c1 * c1xvPS1yv - 2.0 * s2 * c2yvMS2yv);
+    term3.resize(XsLocal.size(), term3.size() / XsLocal.size());
+    Eigen::VectorXd term4 = (c2 * c2 + s1 * s1) * YsLocal1d.array().square();
+    Eigen::MatrixXd term5 = Eigen::kroneckerProduct(
+      YsLocal1d, 2.0 * c2 * c2yvMS2yv + 2.0 * s1 * c1xvPS1yv);
+    term5.resize(XsLocal.size(), term5.size() / XsLocal.size());
+    Eigen::VectorXd term6 =
+      c1xvPS1yv.array().square() + c2yvMS2yv.array().square();
+
+    Eigen::VectorXd term124 = term1 + term2 + term4;
+    Eigen::MatrixXd term356 = (term3 + term5).rowwise() + term6.transpose();
+
+    Eigen::MatrixXd termTot = term356.colwise() + term124;
+
+    Eigen::MatrixXd inside = (termTot.array() <= 1.0).cast<double>();
+
+    Eigen::VectorXd areaFract1d = inside.colwise().sum();
+
+    areaFract1d /= nv2;
+
+    Eigen::MatrixXd areaFract =
+      Eigen::Map<const Eigen::MatrixXd>(areaFract1d.data(), nxCell, nyCell);
+
+    return areaFract;
+}
+
+auto
 main(int argc, char** argv) -> int
 {
 
@@ -104,49 +187,24 @@ main(int argc, char** argv) -> int
         return 0;
     }
 
-    auto fillingParameter = 1.0 - params["filling_parameter"].as<double>();
+    auto fillingParameter = 1.0 - params["thickening_parameter"].as<double>();
     auto nVents = params["x_vent"].as<std::vector<int>>().size();
-
-    auto ventFlag = params["vent_flag"].as<int>();
 
     auto xVent = params["x_vent"].as<std::vector<int>>();
     auto yVent = params["y_vent"].as<std::vector<int>>();
-    auto xVentEnd = params.getOpt<std::vector<int>>("x_vent_end");
-    auto yVentEnd = params.getOpt<std::vector<int>>("y_vent_end");
-    auto fissureProbabilities =
-      params.getOpt<std::vector<double>>("fissure_probabilities");
 
-    auto cumFissLength = calculateCumFissLength(
-      xVent, yVent, xVentEnd, yVentEnd, ventFlag, nVents, fissureProbabilities);
+    auto cumFissLength = calculateCumFissLength(xVent, yVent, nVents);
 
-    if (params.contains("input_file")) {
-        createBackup(params["input_file"].as<std::string>());
-    }
+    // skip shapefile stuff
+
+    // skip backup stuff
 
     auto aBeta = params["a_beta"].as<double>();
     auto bBeta = params["b_beta"].as<double>();
 
     auto maxNLobes = params["max_n_lobes"].as<int>();
     auto minNLobes = params["min_n_lobes"].as<int>();
-    auto allocNLobes = [&]() {
-        if (aBeta == 0.0 && bBeta == 0.0) {
-            return params["max_n_lobes"].as<int>();
-        }
-        auto nFlows = params["n_flows"].as<int>();
-        auto xBeta =
-          Eigen::VectorXd::LinSpaced(nFlows, 0, nFlows - 1) / (nFlows - 1);
-
-        // TODO: check math!
-        auto betaPdf =
-          (xBeta.array().pow(aBeta) * (1.0 - xBeta.array()).pow(bBeta))
-            .matrix();
-
-        return static_cast<int>(
-          std::round(minNLobes +
-                     0.5 * (maxNLobes -
-                            minNLobes) *
-                       betaPdf.maxCoeff()));
-    }();
+    auto allocNLobes = params["max_n_lobes"].as<int>(); // skip if
 
     auto angle = Eigen::VectorXd::Zero(allocNLobes).eval();
     auto x = Eigen::VectorXd::Zero(allocNLobes).eval();
@@ -160,44 +218,31 @@ main(int argc, char** argv) -> int
     auto parent = Eigen::VectorXi::Zero(allocNLobes).eval();
     auto alfaInertial = Eigen::VectorXd::Zero(allocNLobes).eval();
 
-
-    if (params["volume_flag"].as<bool>()) {
-        auto lobeArea = params["lobe_area"].as<double>();
-        auto totalVolume = params["total_volume"].as<double>();
-        auto nFlows = params["n_flows"].as<int>();
-
-        if (!params["fixed_dimension_flag"].as<bool>()) {
-            // avg_lobe_thickness = total_volume / ( n_flows * lobe_area * 0.5 * ( min_n_lobes + max_n_lobes ) )
-            auto avgLobeThickness =
-              totalVolume /
-              (nFlows * lobeArea *
-               0.5 * (minNLobes +
-                      maxNLobes));
-        }
-        lobeArea = totalVolume /
-                   (nFlows *
-                    params["avg_lobe_thickness"].as<double>() *
-                    0.5 * (minNLobes +
-                           maxNLobes));
-    }
+    auto lobeArea = params["lobe_area"].as<double>();
+    auto totalVolume = params["total_volume"].as<double>();
+    auto nFlows = params["n_flows"].as<int>();
+    auto avgLobeThickness =
+      totalVolume / (nFlows * lobeArea * 0.5 * (minNLobes + maxNLobes));
 
     auto npoints = params["npoints"].as<int>();
     auto t = Eigen::VectorXd::LinSpaced(npoints, 0, 2.0 * M_PI);
     auto xCircle = t.array().cos();
     auto yCircle = t.array().sin();
 
-    // # Parse the header using a loop and
-    // # the built-in linecache module
-    // hdr = [getline(source, i) for i in range(1,7)]
-    // values = [float(h.split(" ")[-1].strip()) for h in hdr]
-    // del hdr
-
-    auto source = params["input_file"].as<std::string>();
+    auto source = params["source"].as<std::string>();
     auto values = std::array<double, 6>{};
+
     {
         auto sourceStream = std::ifstream{ source };
+        if (!sourceStream) {
+            std::cerr << "Could not open source file: " << source << "\n";
+            std::cerr << "reason: " << std::strerror(errno) << "\n";
+            std::cout << "File path " << source << " at absolute location "
+                      << std::filesystem::absolute(source)
+                      << " does not exist\n";
+            return 1;
+        }
         auto line = std::string{};
-        std::getline(sourceStream, line);
         for (auto i = 0; i < 6; ++i) {
             std::getline(sourceStream, line);
             auto lastSpace = line.find_last_of(' ');
@@ -210,21 +255,836 @@ main(int argc, char** argv) -> int
     cols = std::round(cols);
     rows = std::round(rows);
 
-    auto cropFlag = params.contains("west_to_vent") && params.contains("east_to_vent") &&
-                     params.contains("south_to_vent") && params.contains("north_to_vent");
+    auto arr = loadTxt(params["source"].as<std::string>(), rows, cols, 6);
 
-    auto start = std::chrono::high_resolution_clock::now();
+    auto nx = arr.cols();
+    Eigen::VectorXd xs =
+      lx + cell * (0.5 + Eigen::VectorXd::LinSpaced(nx, 0, nx - 1).array());
+    auto xmin = xs.minCoeff();
+    auto xmax = xs.maxCoeff();
 
-    // get number of rows and cols in source file
-    auto [cols, rows] = getColsRows(params["input_file"].as<std::string>());
+    auto ny = arr.rows();
+    Eigen::VectorXd ys =
+      ly + cell * (0.5 + Eigen::VectorXd::LinSpaced(ny, 0, ny - 1).array());
+    auto ymin = ys.minCoeff();
+    auto ymax = ys.maxCoeff();
 
-    if (cropFlag) {
+    std::cout << xmin << " " << ymin << "\n";
 
+    auto Xs = Eigen::MatrixXd::Zero(ny, nx).eval();
+    auto Ys = Eigen::MatrixXd::Zero(ny, nx).eval();
+    for (auto i = 0; i < ny; ++i) {
+        Xs.row(i) = xs;
+    }
+    for (auto i = 0; i < nx; ++i) {
+        Ys.col(i) = ys;
     }
 
+    auto Zs = Eigen::MatrixXd::Zero(ny, nx).eval();
+    for (auto i = 0; i < ny; ++i) {
+        Zs.row(i) = arr.row(ny - i - 1);
+    }
+
+    // skip restart files
+
+    // # Define a small grid for lobe-cells intersection
+    // nv = 20
+    // xv,yv = np.meshgrid(np.linspace(-0.5*cell,0.5*cell,
+    // nv),np.linspace(-0.5*cell,0.5*cell, nv))
+    // xv = np.reshape(xv,-1)
+    // yv = np.reshape(yv,-1)
+    // nv2 = nv*nv
+
+    auto nv = 20;
+    auto xvInit = Eigen::VectorXd::LinSpaced(nv, -0.5 * cell, 0.5 * cell);
+    auto yvInit = Eigen::VectorXd::LinSpaced(nv, -0.5 * cell, 0.5 * cell);
+    auto xvMesh = Eigen::MatrixXd::Zero(nv, nv).eval();
+    auto yvMesh = Eigen::MatrixXd::Zero(nv, nv).eval();
+    for (auto i = 0; i < nv; ++i) {
+        xvMesh.row(i) = xvInit;
+    }
+    for (auto i = 0; i < nv; ++i) {
+        yvMesh.col(i) = yvInit;
+    }
+    auto xv = Eigen::VectorXd::Zero(nv * nv).eval();
+    auto yv = Eigen::VectorXd::Zero(nv * nv).eval();
+    for (auto i = 0; i < nv; ++i) {
+        xv.segment(i * nv, nv) = xvMesh.row(i);
+    }
+    for (auto i = 0; i < nv; ++i) {
+        yv.segment(i * nv, nv) = yvMesh.col(i);
+    }
+
+    auto nv2 = nv * nv;
+
+    // skip plotting
+
+    // Ztot = np.zeros((ny,nx))
+    // Ztot_temp = np.zeros((ny,nx))
+    //
+    // np.copyto(Ztot,Zs)
+    // np.copyto(Ztot_temp,Zs)
+
+    auto Ztot = Zs;
+    auto ZtotTemp = Zs;
+
+    auto nTest = 0;
+
+    // random device
+    auto rd = std::random_device{};
+    // random number generator
+    auto gen = std::mt19937(rd());
+
+    auto gslGen = gsl_rng_alloc(gsl_rng_mt19937);
+
+    auto Xs1d = Eigen::VectorXd::Map(Xs.data(), Xs.size());
+    auto Ys1d = Eigen::VectorXd::Map(Ys.data(), Ys.size());
+    auto nxy = Xs1d.size();
+
+    auto points = Eigen::MatrixXd::Zero(nxy, 2).eval();
+    auto Zflow = Eigen::MatrixXd::Zero(ny, nx).eval();
+
+    auto maxAspectRatio = params["max_aspect_ratio"].as<double>();
+    auto maxSemiaxis = std::sqrt(lobeArea * maxAspectRatio / M_PI);
+    auto maxCells = std::ceil(2.0 * maxSemiaxis / cell) + 4;
+    auto maxCellsInt = static_cast<int>(maxCells);
+
+    std::cout << "max_semiaxis " << maxSemiaxis << "\n";
+
+    auto jtopArray = Eigen::VectorXi::Zero(allocNLobes).eval();
+    auto jbottomArray = Eigen::VectorXi::Zero(allocNLobes).eval();
+
+    auto irightArray = Eigen::VectorXi::Zero(allocNLobes).eval();
+    auto ileftArray = Eigen::VectorXi::Zero(allocNLobes).eval();
+
+    auto zhazard = Eigen::MatrixXd::Zero(ny, nx).eval().eval();
+    auto zhazardTemp = Eigen::MatrixXd::Zero(ny, nx).eval().eval();
+
+    Eigen::MatrixXd zdist = Zflow.array() + 9999.0;
+
+    // patch = []
+    //
+    //
+    // print ('End pre-processing')
+    // print ('')
+    //
+    // # counter for the re-evaluation of the slope
+    // flows_counter = 0
+    //
+    // start = time.perf_counter()
+    //
+    // est_rem_time = ''
+    //
+    // n_lobes_tot = 0
+
+    std::cout << "End pre-processing\n\n";
+
+    auto flowsCounter = 0;
+    auto nLobesTot = 0;
+
+    auto thicknessRatio = params["thickness_ratio"].as<double>();
+
+    auto nFlowsCounter = params["n_flows_counter"].as<int>();
+
+    auto nInit = params["n_init"].as<int>();
+
+    auto maxSlopeProb = params["max_slope_prob"].as<double>();
+
+    auto aspectRatioCoeff = params["aspect_ratio_coeff"].as<double>();
+
+    auto lobeExponent = params["lobe_exponent"].as<double>();
+
+    auto inertialExponent = params["inertial_exponent"].as<double>();
+
+    auto distFact = params["dist_fact"].as<double>();
+
+    auto nLobesCounter = params["n_lobes_counter"].as<int>();
+
+    auto estRemTime = std::string{};
+
+    auto start = std::chrono::steady_clock::now();
+
+    for (size_t flow = 0; flow < nFlows; flow++) {
+        auto ZflowLocalArray =
+          Eigen::Tensor<int, 3>(allocNLobes, maxCellsInt, maxCellsInt).eval();
+        auto descendents = Eigen::VectorXi::Zero(allocNLobes).eval();
+
+        auto iFirstCheck = 0;
+
+        flowsCounter++;
+
+        auto nLobes =
+          std::uniform_real_distribution<double>(minNLobes, maxNLobes)(gen);
+
+        auto thicknessMin =
+          2.0 * thicknessRatio / (thicknessRatio + 1.0) * avgLobeThickness;
+        auto deltaLobeThickness =
+          2.0 * (avgLobeThickness - thicknessMin) / (nLobes - 1.0);
+
+        // last_percentage_5 = np.rint(flow*20.0/(n_flows)).astype(int)
+        //        last_percentage = np.rint(flow*100.0/(n_flows))
+        //        last_percentage = np.rint(flow*100.0/(n_flows))
+        //        last_percentage = last_percentage.astype(int)
+        //        sys.stdout.write('\r')
+        //        sys.stdout.write("[%-20s] %d%% %s" % ('='*(last_percentage_5),
+        //        last_percentage, est_rem_time)) sys.stdout.flush()
+
+        auto lastPercentage5 =
+          static_cast<int>(std::round(flow * 20.0 / nFlows));
+        auto lastPercentage =
+          static_cast<int>(std::round(flow * 100.0 / nFlows));
+
+        std::cout << "\r[" << std::string(lastPercentage5, '=')
+                  << std::string(20 - lastPercentage5, ' ') << "] "
+                  << lastPercentage << "% " << estRemTime << std::flush;
+
+        if (flowsCounter == nFlowsCounter) {
+            flowsCounter = 0;
+
+            ZtotTemp = Ztot;
+        }
+
+        auto lobesCounter = 0;
+
+        for (size_t i = 0; i < nInit; i++) {
+            if (nFlows == 1) {
+                auto lastPercentage =
+                  static_cast<int>(std::round(i * 20.0 / (nInit - 1)) * 5);
+
+                std::cout << "\r[" << std::string(lastPercentage / 5, '=')
+                          << std::string(20 - lastPercentage / 5, ' ') << "] "
+                          << lastPercentage << "%" << std::flush;
+            }
+
+            auto iVent = static_cast<int>(std::floor(flow * nVents / nFlows));
+
+            x(i) = xVent[iVent];
+            y(i) = yVent[iVent];
+
+            distInt(i) = 0;
+            descendents(i) = 0;
+
+            auto xi = (x(i) - xmin) / cell;
+            auto yi = (y(i) - ymin) / cell;
+
+            auto ix = static_cast<int>(std::floor(xi));
+            auto iy = static_cast<int>(std::floor(yi));
+
+            auto xiFract = xi - ix;
+            auto yiFract = yi - iy;
+
+            auto FxTest =
+              (xiFract * (Ztot(iy + 1, ix + 1) - Ztot(iy + 1, ix)) +
+               (1.0 - xiFract) * (Ztot(iy, ix + 1) - Ztot(iy, ix))) /
+              cell;
+            auto FyTest =
+              (yiFract * (Ztot(iy + 1, ix + 1) - Ztot(iy, ix + 1)) +
+               (1.0 - yiFract) * (Ztot(iy + 1, ix) - Ztot(iy, ix))) /
+              cell;
+
+            auto maxSlopeAngle = std::fmod(
+              180.0 + (180.0 * std::atan2(FyTest, FxTest) / M_PI), 360.0);
+            auto slope = std::sqrt(std::pow(FxTest, 2) + std::pow(FyTest, 2));
+
+            auto slopeDeg = 180.0 * std::atan(slope) / M_PI;
+
+            auto randAngleNew = [&]() {
+                if (slopeDeg > 0) {
+                    auto sigma = (1.0 - maxSlopeProb) / maxSlopeProb *
+                                 (90.0 - slopeDeg) / slopeDeg;
+                    return rtnorm(gslGen, -180.0, 180.0, 0.0, sigma).first;
+                }
+                auto rand =
+                  std::uniform_real_distribution<double>(0.0, 1.0)(gen);
+                return 360.0 * std::abs(rand - 0.5);
+            }();
+            angle(i) = maxSlopeAngle + randAngleNew;
+
+            auto aspectRatio =
+              std::min(maxAspectRatio, 1.0 + aspectRatioCoeff * slope);
+
+            x1(i) = std::sqrt(lobeArea / M_PI) * std::sqrt(aspectRatio);
+            x2(i) = std::sqrt(lobeArea / M_PI) / std::sqrt(aspectRatio);
+
+            auto [xe, ye] =
+              ellipse(x(i), y(i), x1(i), x2(i), angle(i), xCircle, yCircle);
+
+            auto minXe = xe.minCoeff();
+            auto maxXe = xe.maxCoeff();
+
+            auto minYe = ye.minCoeff();
+            auto maxYe = ye.maxCoeff();
+
+            auto iLeft = static_cast<int>(std::round(
+              std::distance(xs.begin(),
+                            std::find_if(xs.begin(),
+                                         xs.end(),
+                                         [&](auto x) { return x > minXe; })) -
+              2));
+            auto iRight = static_cast<int>(std::round(
+              std::distance(xs.begin(),
+                            std::find_if(xs.begin(),
+                                         xs.end(),
+                                         [&](auto x) { return x > maxXe; })) +
+              2));
+
+            auto jBottom = static_cast<int>(std::round(
+              std::distance(ys.begin(),
+                            std::find_if(ys.begin(),
+                                         ys.end(),
+                                         [&](auto y) { return y > minYe; })) -
+              2));
+            auto jTop = static_cast<int>(std::round(
+              std::distance(ys.begin(),
+                            std::find_if(ys.begin(),
+                                         ys.end(),
+                                         [&](auto y) { return y > maxYe; })) +
+              2));
+
+            Eigen::MatrixXd xsLocal =
+              Xs.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
+            Eigen::MatrixXd ysLocal =
+              Ys.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
+
+            Eigen::MatrixXd areaFract = localIntersection(xsLocal,
+                                                          ysLocal,
+                                                          x(i),
+                                                          y(i),
+                                                          x1(i),
+                                                          x2(i),
+                                                          angle(i),
+                                                          xv,
+                                                          yv,
+                                                          nv2);
+
+            auto zflowLocal = areaFract;
+            auto zflowLocalInt =
+              areaFract.unaryExpr([](auto x) { return std::ceil(x); })
+                .cast<int>();
+
+            auto lobeThickness = thicknessMin + (i - 1) * deltaLobeThickness;
+
+            Zflow.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) +=
+              lobeThickness * zflowLocal;
+            ZtotTemp.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
+              Zs.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) +
+              fillingParameter *
+                Zflow.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
+
+            auto zdistLocal = zflowLocalInt
+                                .unaryExpr([&](auto x) {
+                                    return x * distInt(i) + 9999 * (x == 0);
+                                })
+                                .eval();
+            zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
+              zdistLocal.cast<double>().cwiseMin(
+                zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft));
+
+            jtopArray(i) = jTop;
+            jbottomArray(i) = jBottom;
+            irightArray(i) = iRight;
+            ileftArray(i) = iLeft;
+
+            lobesCounter++;
+        }
+        for (int i = nInit; i < nLobes; i++) {
+            auto idx0 = std::uniform_real_distribution<double>(0.0, 1.0)(gen);
+            auto idx1 = std::pow(idx0, lobeExponent);
+
+            auto idx2 = i * idx1;
+            auto idx3 = std::floor(idx2);
+            auto idx = static_cast<int>(idx3);
+
+            parent(i) = idx;
+            distInt(i) = distInt(idx) + 1;
+
+            auto last = i;
+
+            for (int j = 0; j < distInt(idx) + 1; j++) {
+                auto previous = parent(last);
+                descendents(previous) = descendents(previous) + 1;
+                last = previous;
+            }
+
+            auto xi = (x(idx) - xmin) / cell;
+            auto yi = (y(idx) - ymin) / cell;
+
+            auto ix = static_cast<int>(std::floor(xi));
+            auto iy = static_cast<int>(std::floor(yi));
+
+            auto ix1 = ix + 1;
+            auto iy1 = iy + 1;
+
+            if ((ix <= 1) || (ix1 >= nx - 1) || (iy <= 1) || (iy1 >= ny - 1)) {
+                break;
+            }
+
+            auto xiFract = xi - ix;
+            auto yiFract = yi - iy;
+
+            auto fxLobe = (xiFract * (Ztot(iy1, ix1) - Ztot(iy1, ix)) +
+                           (1.0 - xiFract) * (Ztot(iy, ix1) - Ztot(iy, ix))) /
+                          cell;
+            auto fyLobe = (yiFract * (Ztot(iy1, ix1) - Ztot(iy, ix1)) +
+                           (1.0 - yiFract) * (Ztot(iy1, ix) - Ztot(iy, ix))) /
+                          cell;
+
+            auto slope = std::sqrt(std::pow(fxLobe, 2) + std::pow(fyLobe, 2));
+            auto maxSlopeAngle =
+              std::fmod(180 + (180 * std::atan2(fyLobe, fxLobe) / M_PI), 360);
+
+            auto slopeDeg = 180.0 * std::atan(slope) / M_PI;
+
+            auto randAngleNew = [&]() {
+                if (slopeDeg > 0.0) {
+                    auto sigma = (1.0 - maxSlopeProb) / maxSlopeProb *
+                                 (90.0 - slopeDeg) / slopeDeg;
+                    return rtnorm(gslGen, -180, 180, 0, sigma).first;
+                }
+                return std::uniform_real_distribution<double>(-180.0,
+                                                              180.0)(gen);
+            }();
+
+            auto newAngle = maxSlopeAngle + randAngleNew;
+
+            constexpr auto deg2rad = M_PI / 180.0;
+
+            auto cosAngle1 = std::cos(angle(idx) * deg2rad);
+            auto sinAngle1 = std::sin(angle(idx) * deg2rad);
+
+            auto cosAngle2 = std::cos(newAngle * deg2rad);
+            auto sinAngle2 = std::sin(newAngle * deg2rad);
+
+            alfaInertial(i) = std::pow(
+              1.0 - std::pow(2.0 * std::atan(slope) / M_PI, inertialExponent),
+              1.0 / inertialExponent);
+
+            auto cosAngleAvg =
+              (1.0 - alfaInertial(i)) * cosAngle2 + alfaInertial(i) * cosAngle1;
+            auto sinAngleAvg =
+              (1.0 - alfaInertial(i)) * sinAngle2 + alfaInertial(i) * sinAngle1;
+
+            auto angleAvg =
+              std::fmod(180 * std::atan2(sinAngleAvg, cosAngleAvg) / M_PI, 360);
+
+            newAngle = angleAvg;
+
+            // a = np.tan(deg2rad*(new_angle-angle[idx]))
+
+            auto a = std::tan(deg2rad * (newAngle - angle(idx)));
+
+            //         if ( np.cos(deg2rad*(new_angle-angle[idx])) > 0 ):
+            //
+            //            xt = np.sqrt( x1[idx]**2 * x2[idx]**2 / ( x2[idx]**2 +
+            //            x1[idx]**2 * a**2 ) )
+            //
+            //        else:
+            //
+            //            xt = - np.sqrt( x1[idx]**2 * x2[idx]**2 / ( x2[idx]**2
+            //            + x1[idx]**2 * a**2 ) )
+
+            auto xt = [&]() {
+                if (std::cos(deg2rad * (newAngle - angle(idx))) > 0) {
+                    return std::sqrt(x1(idx) * x2(idx) /
+                                     (x2(idx) + x1(idx) * std::pow(a, 2)));
+                }
+                return -std::sqrt(x1(idx) * x2(idx) /
+                                  (x2(idx) + x1(idx) * std::pow(a, 2)));
+            }();
+
+            auto yt = a * xt;
+
+            //         delta_x = xt * cos_angle1 - yt * sin_angle1
+            //        delta_y = xt * sin_angle1 + yt * cos_angle1
+
+            auto deltaX = xt * cosAngle1 - yt * sinAngle1;
+            auto deltaY = xt * sinAngle1 + yt * cosAngle1;
+
+            //         xi = (x[idx]+delta_x - xmin)/cell
+            //        yi = (y[idx]+delta_y - ymin)/cell
+            //
+            //        ix = np.floor(xi)
+            //        iy = np.floor(yi)
+            //
+            //        ix = ix.astype(int)
+            //        iy = iy.astype(int)
+            //
+            //        ix1 = ix+1
+            //        iy1 = iy+1
+
+            xi = (x(idx) + deltaX - xmin) / cell;
+            yi = (y(idx) + deltaY - ymin) / cell;
+
+            ix = static_cast<int>(std::floor(xi));
+            iy = static_cast<int>(std::floor(yi));
+
+            ix1 = ix + 1;
+            iy1 = iy + 1;
+
+            //         if ( ix <= 1 ) or ( ix1 >= nx-1 ) or ( iy <= 1 ) or ( iy1
+            //         >= ny-1 ):
+            //
+            //            break
+
+            if ((ix <= 1) || (ix1 >= nx - 1) || (iy <= 1) || (iy1 >= ny - 1)) {
+                break;
+            }
+
+            // xi_fract = xi-ix
+            //        yi_fract = yi-iy
+            //
+            //        Fx_lobe = ( xi_fract*( Ztot[iy1,ix1] - Ztot[iy1,ix] ) \
+            //                    + (1.0-xi_fract)*( Ztot[iy,ix1] - Ztot[iy,ix]
+            //                    ) ) / cell
+            //
+            //        Fy_lobe = ( yi_fract*( Ztot[iy1,ix1] - Ztot[iy,ix1] ) \
+            //                    + (1.0-yi_fract)*( Ztot[iy1,ix] - Ztot[iy,ix]
+            //                    ) ) / cell
+
+            xiFract = xi - ix;
+            yiFract = yi - iy;
+
+            fxLobe = (xiFract * (Ztot(iy1, ix1) - Ztot(iy1, ix)) +
+                      (1.0 - xiFract) * (Ztot(iy, ix1) - Ztot(iy, ix))) /
+                     cell;
+            fyLobe = (yiFract * (Ztot(iy1, ix1) - Ztot(iy, ix1)) +
+                      (1.0 - yiFract) * (Ztot(iy1, ix) - Ztot(iy, ix))) /
+                     cell;
+
+            //         slope = np.sqrt(np.square(Fx_lobe)+np.square(Fy_lobe))
+            //        aspect_ratio = min(max_aspect_ratio,1.0 +
+            //        aspect_ratio_coeff * slope)
+
+            slope = std::sqrt(std::pow(fxLobe, 2) + std::pow(fyLobe, 2));
+            auto aspectRatio =
+              std::min(maxAspectRatio, 1.0 + aspectRatioCoeff * slope);
+
+            //         new_x1 = np.sqrt(lobe_area/np.pi)*np.sqrt(aspect_ratio)
+            //        new_x2 = np.sqrt(lobe_area/np.pi)/np.sqrt(aspect_ratio)
+
+            auto newx1 = std::sqrt(lobeArea / M_PI) * std::sqrt(aspectRatio);
+            auto newx2 = std::sqrt(lobeArea / M_PI) / std::sqrt(aspectRatio);
+
+            // v1 = np.sqrt(delta_x**2 + delta_y**2)
+
+            auto v1 = std::sqrt(std::pow(deltaX, 2) + std::pow(deltaY, 2));
+
+            // v2 = v1 + new_x1
+
+            auto v2 = v1 + newx1;
+
+            // v = ( v1 * ( 1.0 - dist_fact ) + v2 * dist_fact ) / v1
+
+            auto v = (v1 * (1.0 - distFact) + v2 * distFact) / v1;
+
+            //         x_new = x[idx] + v * delta_x
+            //        y_new = y[idx] + v * delta_y
+
+            auto xNew = x(idx) + v * deltaX;
+            auto yNew = y(idx) + v * deltaY;
+
+            //         angle[i] = new_angle
+            //        x1[i] = new_x1
+            //        x2[i] = new_x2
+            //        x[i] = x_new
+            //        y[i] = y_new
+
+            angle(idx) = newAngle;
+            x1(idx) = newx1;
+            x2(idx) = newx2;
+            x(idx) = xNew;
+            y(idx) = yNew;
+
+            // # compute the last lobe
+            //            [ xe , ye ] = ellipse( x[i], y[i], x1[i], x2[i],
+            //            angle[i] , X_circle , Y_circle )
+
+            auto [xe, ye] = ellipse(
+              x(idx), y(idx), x1(idx), x2(idx), angle(idx), xCircle, yCircle);
+
+            //             min_xe = np.min(xe)
+            //            max_xe = np.max(xe)
+            //
+            //            min_ye = np.min(ye)
+            //            max_ye = np.max(ye)
+            //
+            //            i_parent = parent[i]
+
+            auto minXe = xe.minCoeff();
+            auto maxXe = xe.maxCoeff();
+
+            auto minYe = ye.minCoeff();
+            auto maxYe = ye.maxCoeff();
+
+            auto iParent = parent(idx);
+
+            //             if ( min_xe < xs[0] ):
+            //
+            //                i_left = 0
+            //
+            //            elif ( min_xe >= xs[nx-1] ):
+            //
+            //                i_left = nx-1
+            //
+            //            else:
+            //
+            //                i_left = np.argmax(xs>min_xe)-2
+
+            auto iLeft = [&]() {
+                if (minXe < xs(0)) {
+                    return 0l;
+                } else if (minXe >= xs(nx - 1)) {
+                    return nx - 1;
+                } else {
+                    return static_cast<long>(std::distance(
+                             xs.data(),
+                             std::upper_bound(
+                               xs.data(), xs.data() + nx, minXe))) -
+                           2;
+                }
+            }();
+
+            auto iRight = [&]() {
+                if (maxXe < xs(0)) {
+                    return 0l;
+                } else if (maxXe >= xs(nx - 1)) {
+                    return nx - 1;
+                } else {
+                    return static_cast<long>(std::distance(
+                             xs.data(),
+                             std::upper_bound(
+                               xs.data(), xs.data() + nx, maxXe))) +
+                           2;
+                }
+            }();
+
+            auto jBottom = [&]() {
+                if (minYe < ys(0)) {
+                    return 0l;
+                } else if (minYe >= ys(ny - 1)) {
+                    return ny - 1;
+                } else {
+                    return static_cast<long>(std::distance(
+                             ys.data(),
+                             std::upper_bound(
+                               ys.data(), ys.data() + ny, minYe))) -
+                           2;
+                }
+            }();
+
+            auto jTop = [&]() {
+                if (maxYe < ys(0)) {
+                    return 0l;
+                } else if (maxYe >= ys(ny - 1)) {
+                    return ny - 1;
+                } else {
+                    return static_cast<long>(std::distance(
+                             ys.data(),
+                             std::upper_bound(
+                               ys.data(), ys.data() + ny, maxYe))) +
+                           2;
+                }
+            }();
+
+            // Xs_local = Xs[j_bottom:j_top,i_left:i_right]
+            //            Ys_local = Ys[j_bottom:j_top,i_left:i_right]
+            Eigen::MatrixXd xsLocal = Xs.block(jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1);
+            Eigen::MatrixXd ysLocal = Ys.block(jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1);
+
+            auto areaFract = localIntersection(xsLocal,
+                                               ysLocal,
+                                               x(idx),
+                                               y(idx),
+                                               x1(idx),
+                                               x2(idx),
+                                               angle(idx),
+                                               xv,
+                                               yv,
+                                               nv2);
+
+            Eigen::MatrixXd zFlowLocal = areaFract;
+            Eigen::MatrixXd zDistLocal =
+              zFlowLocal * distInt(idx) + (9999 * zFlowLocal.array() == 0).cast<double>().matrix();
+
+            zdist.block(
+              jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1) =
+              zdist
+                .block(jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1)
+                .cwiseMin(zDistLocal);
+
+            auto lobeThickness = thicknessMin + (i - 1) * deltaLobeThickness;
+
+            Zflow.block(
+              jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1) +=
+              lobeThickness * zFlowLocal;
+            ZtotTemp.block(
+              jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1) =
+              Zs.block(jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1) +
+              fillingParameter *
+                Zflow.block(
+                  jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1);
+
+            jtopArray(idx) = jTop;
+            jbottomArray(idx) = jBottom;
+            irightArray(idx) = iRight;
+            ileftArray(idx) = iLeft;
+
+            lobesCounter++;
+
+            if (lobesCounter == nLobesCounter) {
+                lobesCounter = 0;
+                Ztot = ZtotTemp;
+            }
+        }
+
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+          std::chrono::steady_clock::now() - start);
+        auto estimated =
+          std::ceil(elapsed.count() * nFlows / (flow + 1) - elapsed.count());
+        estRemTime = std::to_string(estimated);
+    }
+
+    std::cout << "\r[" << std::string(20, '=') << "] 100%" << std::endl;
+
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+      std::chrono::steady_clock::now() - start);
+
+    std::cout << "Total number of lobes " << nLobesTot
+              << " Average number of lobes "
+              << static_cast<long>(std::round(1.0 * nLobesTot / nFlows))
+              << std::endl;
+    std::cout << "Time elapsed " << elapsed.count() << " sec." << std::endl;
+    std::cout << "Saving files" << std::endl;
+
+    //     header = "ncols     %s\n" % Zflow.shape[1]
+    //    header += "nrows    %s\n" % Zflow.shape[0]
+    //    header += "xllcorner " + str(lx) +"\n"
+    //    header += "yllcorner " + str(ly) +"\n"
+    //    header += "cellsize " + str(cell) +"\n"
+    //    header += "NODATA_value 0\n"
+
+    auto runName = params["run_name"].as<std::string>();
+    auto outputFull = runName + "_thickness_full.asc";
+    {
+        std::ofstream zflowFile(outputFull);
+        zflowFile << "ncols " << Zflow.cols() << std::endl;
+        zflowFile << "nrows " << Zflow.rows() << std::endl;
+        zflowFile << "xllcorner " << lx << std::endl;
+        zflowFile << "yllcorner " << ly << std::endl;
+        zflowFile << "cellsize " << cell << std::endl;
+        zflowFile << "NODATA_value 0" << std::endl;
+
+        zflowFile << Zflow.colwise().reverse().format(
+          Eigen::IOFormat(5,
+                          Eigen::DontAlignCols,
+                          " ",
+                          "\n",
+                          "",
+                          "",
+                          "",
+                          ""));
+    }
+    std::cout << outputFull << " saved" << std::endl;
+
+    auto maxLobes =
+      static_cast<long>(std::floor(Zflow.maxCoeff() / avgLobeThickness));
+
+    auto maskingThreshold = params["masking_threshold"].as<double>();
+
+    Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> maskedZflow;
+    for (int i = 0; i < 10 * maxLobes; i++) {
+        maskedZflow = (Zflow.array() < i * 0.1 * avgLobeThickness).eval();
+
+        auto totalZflow = Zflow.sum();
+
+        auto volumeFraction = maskedZflow.sum() / totalZflow;
+
+        auto coverageFraction = volumeFraction;
+
+        if (coverageFraction < maskingThreshold) {
+            std::cout << "Total volume " << cell * cell * totalZflow
+                      << " Masked volume " << cell * cell * maskedZflow.sum()
+                      << " Volume fraction " << coverageFraction << std::endl;
 
 
 
+            auto outputMasked = runName + "_thickness_masked.asc";
+            {
+                std::ofstream zflowMaskedFile(outputMasked);
+                zflowMaskedFile << "ncols " << Zflow.cols() << std::endl;
+                zflowMaskedFile << "nrows " << Zflow.rows() << std::endl;
+                zflowMaskedFile << "xllcorner " << lx << std::endl;
+                zflowMaskedFile << "yllcorner " << ly << std::endl;
+                zflowMaskedFile << "cellsize " << cell << std::endl;
+                zflowMaskedFile << "NODATA_value 0" << std::endl;
+
+                zflowMaskedFile
+                  << ((1 - maskedZflow.cast<double>().array()) * Zflow.array())
+                       .colwise()
+                       .reverse()
+                       .format(Eigen::IOFormat(5,
+                                               Eigen::DontAlignCols,
+                                               " ",
+                                               "\n",
+                                               "",
+                                               "",
+                                               "",
+                                               ""));
+            }
+
+            std::cout << outputMasked << " saved" << std::endl;
+
+            break;
+        }
+    }
+
+    auto outputDist = runName + "_dist_full.asc";
+    {
+        std::ofstream zdistFile(outputDist);
+        zdistFile << "ncols " << zdist.cols() << std::endl;
+        zdistFile << "nrows " << zdist.rows() << std::endl;
+        zdistFile << "xllcorner " << lx << std::endl;
+        zdistFile << "yllcorner " << ly << std::endl;
+        zdistFile << "cellsize " << cell << std::endl;
+        zdistFile << "NODATA_value 0" << std::endl;
+
+        zdistFile << zdist.colwise().reverse().format(
+          Eigen::IOFormat(Eigen::FullPrecision,
+                          Eigen::DontAlignCols,
+                          " ",
+                          "\n",
+                          "",
+                          "",
+                          "",
+                          ""));
+    }
+
+    std::cout << outputDist << " saved" << std::endl;
+
+    zdist = ((1 - maskedZflow.array()).cast<double>() * zdist.array()).eval();
+
+    auto outputDistMasked = runName + "_dist_masked.asc";
+    {
+        std::ofstream zdistMaskedFile(outputDistMasked);
+        zdistMaskedFile << "ncols " << zdist.cols() << std::endl;
+        zdistMaskedFile << "nrows " << zdist.rows() << std::endl;
+        zdistMaskedFile << "xllcorner " << lx << std::endl;
+        zdistMaskedFile << "yllcorner " << ly << std::endl;
+        zdistMaskedFile << "cellsize " << cell << std::endl;
+        zdistMaskedFile << "NODATA_value 0" << std::endl;
+
+        zdistMaskedFile << zdist.matrix().colwise().reverse().format(
+          Eigen::IOFormat(Eigen::FullPrecision,
+                          Eigen::DontAlignCols,
+                          " ",
+                          "\n",
+                          "",
+                          "",
+                          "",
+                          ""));
+    }
+
+    gsl_rng_free(gslGen);
 
     return 0;
 }

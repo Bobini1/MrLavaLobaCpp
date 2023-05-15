@@ -301,6 +301,14 @@
    "True"
   ],
   [
+   "gsl:fPIC",
+   "True"
+  ],
+  [
+   "gsl:shared",
+   "False"
+  ],
+  [
    "libbacktrace:fPIC",
    "True"
   ],

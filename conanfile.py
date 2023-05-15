@@ -13,6 +13,7 @@ class Recipe(ConanFile):
         self.requires("eigen/3.4.0")
         self.requires("shapelib/1.5.0")
         self.requires("boost/1.81.0")
+        self.requires("gsl/2.7")
 
     def build_requirements(self):
         self.test_requires("catch2/3.3.1")

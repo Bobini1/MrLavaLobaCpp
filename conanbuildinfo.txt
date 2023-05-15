@@ -4,6 +4,7 @@
 /home/bobini/.conan/data/eigen/3.4.0/_/_/package/5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9/include/eigen3
 /home/bobini/.conan/data/shapelib/1.5.0/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c/include
 /home/bobini/.conan/data/boost/1.81.0/_/_/package/1c9eb5dc621aef544cb84a0233267d0dae6a659e/include
+/home/bobini/.conan/data/gsl/2.7/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c/include
 /home/bobini/.conan/data/zlib/1.2.13/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c/include
 /home/bobini/.conan/data/bzip2/1.0.8/_/_/package/ad18e1e856ff78d73ad6f3c9a214f85abf2d0550/include
 /home/bobini/.conan/data/libbacktrace/cci.20210118/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c/include
@@ -13,12 +14,14 @@
 /home/bobini/.conan/data/fmt/9.1.0/_/_/package/e0e003fc38e6dcc03cdfbaf52057d71baa23adad/lib
 /home/bobini/.conan/data/shapelib/1.5.0/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c/lib
 /home/bobini/.conan/data/boost/1.81.0/_/_/package/1c9eb5dc621aef544cb84a0233267d0dae6a659e/lib
+/home/bobini/.conan/data/gsl/2.7/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c/lib
 /home/bobini/.conan/data/zlib/1.2.13/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c/lib
 /home/bobini/.conan/data/bzip2/1.0.8/_/_/package/ad18e1e856ff78d73ad6f3c9a214f85abf2d0550/lib
 /home/bobini/.conan/data/libbacktrace/cci.20210118/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c/lib
 
 [bindirs]
 /home/bobini/.conan/data/shapelib/1.5.0/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c/bin
+/home/bobini/.conan/data/gsl/2.7/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c/bin
 /home/bobini/.conan/data/bzip2/1.0.8/_/_/package/ad18e1e856ff78d73ad6f3c9a214f85abf2d0550/bin
 
 [resdirs]
@@ -76,15 +79,17 @@ boost_filesystem
 boost_atomic
 boost_wserialization
 boost_serialization
+gsl
+gslcblas
 z
 bz2
 backtrace
 
 [system_libs]
-m
 dl
 rt
 pthread
+m
 
 [defines]
 BOOST_STACKTRACE_ADDR2LINE_LOCATION="/usr/bin/addr2line"
@@ -492,6 +497,72 @@ cmake_find_package=Boost
 cmake_find_package_multi=Boost
 
 
+[includedirs_gsl]
+/home/bobini/.conan/data/gsl/2.7/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c/include
+
+[libdirs_gsl]
+/home/bobini/.conan/data/gsl/2.7/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c/lib
+
+[bindirs_gsl]
+/home/bobini/.conan/data/gsl/2.7/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c/bin
+
+[resdirs_gsl]
+
+
+[builddirs_gsl]
+
+
+[libs_gsl]
+gsl
+gslcblas
+
+[system_libs_gsl]
+m
+
+[defines_gsl]
+
+
+[cppflags_gsl]
+
+
+[cxxflags_gsl]
+
+
+[cflags_gsl]
+
+
+[sharedlinkflags_gsl]
+
+
+[exelinkflags_gsl]
+
+
+[sysroot_gsl]
+
+
+[frameworks_gsl]
+
+
+[frameworkdirs_gsl]
+
+
+[rootpath_gsl]
+/home/bobini/.conan/data/gsl/2.7/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c
+
+[name_gsl]
+gsl
+
+[version_gsl]
+2.7
+
+[generatornames_gsl]
+cmake_find_package=GSL
+cmake_find_package_multi=GSL
+
+[generatorfilenames_gsl]
+
+
+
 [includedirs_zlib]
 /home/bobini/.conan/data/zlib/1.2.13/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c/include
 
@@ -692,6 +763,7 @@ stacktrace_addr2line_available=True
 [USER_catch2]
 [USER_eigen]
 [USER_fmt]
+[USER_gsl]
 [USER_libbacktrace]
 [USER_shapelib]
 [USER_zlib]
@@ -701,6 +773,8 @@ stacktrace_addr2line_available=True
 [ENV_shapelib]
 [ENV_boost]
 BOOST_ROOT=/home/bobini/.conan/data/boost/1.81.0/_/_/package/1c9eb5dc621aef544cb84a0233267d0dae6a659e
+[ENV_gsl]
+PATH=["/home/bobini/.conan/data/gsl/2.7/_/_/package/d13c97721d7bdc192ca6529684f2b79beeae8a7c/bin"]
 [ENV_zlib]
 [ENV_bzip2]
 PATH=["/home/bobini/.conan/data/bzip2/1.0.8/_/_/package/ad18e1e856ff78d73ad6f3c9a214f85abf2d0550/bin"]
