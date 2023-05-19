@@ -16,8 +16,7 @@ include(cmake/variables.cmake)
 # ---- Declare library ----
 
 add_library(
-    MrLavaLoba_lib OBJECT
-    source/lib.cpp
+    MrLavaLoba_lib OBJECT source/Params.cpp source/Params.hpp source/rtnorm.cpp source/rtnorm.hpp
 )
 
 target_include_directories(
@@ -48,7 +47,7 @@ target_link_libraries(MrLavaLoba_lib PUBLIC shapelib::shp)
 
 # ---- Declare executable ----
 
-add_executable(MrLavaLoba_exe source/main.cpp source/Params.cpp source/Params.hpp source/rtnorm.cpp source/rtnorm.hpp)
+add_executable(MrLavaLoba_exe source/main.cpp)
 add_executable(MrLavaLoba::exe ALIAS MrLavaLoba_exe)
 
 set_property(TARGET MrLavaLoba_exe PROPERTY OUTPUT_NAME MrLavaLoba)
