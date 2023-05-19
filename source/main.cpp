@@ -341,8 +341,8 @@ main(int argc, char** argv) -> int
     auto irightArray = Eigen::VectorXi::Zero(allocNLobes).eval();
     auto ileftArray = Eigen::VectorXi::Zero(allocNLobes).eval();
 
-    auto zhazard = Eigen::MatrixXd::Zero(ny, nx).eval().eval();
-    auto zhazardTemp = Eigen::MatrixXd::Zero(ny, nx).eval().eval();
+    auto zhazard = Eigen::MatrixXd::Zero(ny, nx).eval();
+    auto zhazardTemp = Eigen::MatrixXd::Zero(ny, nx).eval();
 
     Eigen::MatrixXd zdist = Zflow.array() + 9999.0;
 
