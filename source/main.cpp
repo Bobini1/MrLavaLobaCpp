@@ -287,14 +287,6 @@ main(int argc, char** argv) -> int
 
     // skip restart files
 
-    // # Define a small grid for lobe-cells intersection
-    // nv = 20
-    // xv,yv = np.meshgrid(np.linspace(-0.5*cell,0.5*cell,
-    // nv),np.linspace(-0.5*cell,0.5*cell, nv))
-    // xv = np.reshape(xv,-1)
-    // yv = np.reshape(yv,-1)
-    // nv2 = nv*nv
-
     auto nv = 20;
     auto xvInit = Eigen::VectorXd::LinSpaced(nv, -0.5 * cell, 0.5 * cell);
     auto yvInit = Eigen::VectorXd::LinSpaced(nv, -0.5 * cell, 0.5 * cell);
@@ -316,14 +308,6 @@ main(int argc, char** argv) -> int
     }
 
     auto nv2 = nv * nv;
-
-    // skip plotting
-
-    // Ztot = np.zeros((ny,nx))
-    // Ztot_temp = np.zeros((ny,nx))
-    //
-    // np.copyto(Ztot,Zs)
-    // np.copyto(Ztot_temp,Zs)
 
     auto Ztot = Zs;
     auto ZtotTemp = Zs;
@@ -362,21 +346,6 @@ main(int argc, char** argv) -> int
 
     Eigen::MatrixXd zdist = Zflow.array() + 9999.0;
 
-    // patch = []
-    //
-    //
-    // print ('End pre-processing')
-    // print ('')
-    //
-    // # counter for the re-evaluation of the slope
-    // flows_counter = 0
-    //
-    // start = time.perf_counter()
-    //
-    // est_rem_time = ''
-    //
-    // n_lobes_tot = 0
-
     std::cout << "End pre-processing\n\n";
 
     auto flowsCounter = 0;
@@ -407,8 +376,6 @@ main(int argc, char** argv) -> int
     for (size_t flow = 0; flow < nFlows; flow++) {
         auto ZflowLocalArray =
           Eigen::Tensor<int, 3>(allocNLobes, maxCellsInt, maxCellsInt).eval();
-        auto descendents = Eigen::VectorXi::Zero(allocNLobes).eval();
-
         auto iFirstCheck = 0;
 
         flowsCounter++;
@@ -420,14 +387,6 @@ main(int argc, char** argv) -> int
           2.0 * thicknessRatio / (thicknessRatio + 1.0) * avgLobeThickness;
         auto deltaLobeThickness =
           2.0 * (avgLobeThickness - thicknessMin) / (nLobes - 1.0);
-
-        // last_percentage_5 = np.rint(flow*20.0/(n_flows)).astype(int)
-        //        last_percentage = np.rint(flow*100.0/(n_flows))
-        //        last_percentage = np.rint(flow*100.0/(n_flows))
-        //        last_percentage = last_percentage.astype(int)
-        //        sys.stdout.write('\r')
-        //        sys.stdout.write("[%-20s] %d%% %s" % ('='*(last_percentage_5),
-        //        last_percentage, est_rem_time)) sys.stdout.flush()
 
         auto lastPercentage5 =
           static_cast<int>(std::round(flow * 20.0 / nFlows));
@@ -669,19 +628,7 @@ main(int argc, char** argv) -> int
 
             newAngle = angleAvg;
 
-            // a = np.tan(deg2rad*(new_angle-angle[idx]))
-
             auto a = std::tan(deg2rad * (newAngle - angle(idx)));
-
-            //         if ( np.cos(deg2rad*(new_angle-angle[idx])) > 0 ):
-            //
-            //            xt = np.sqrt( x1[idx]**2 * x2[idx]**2 / ( x2[idx]**2 +
-            //            x1[idx]**2 * a**2 ) )
-            //
-            //        else:
-            //
-            //            xt = - np.sqrt( x1[idx]**2 * x2[idx]**2 / ( x2[idx]**2
-            //            + x1[idx]**2 * a**2 ) )
 
             auto xt = [&]() {
                 if (std::cos(deg2rad * (newAngle - angle(idx))) > 0) {
@@ -694,23 +641,8 @@ main(int argc, char** argv) -> int
 
             auto yt = a * xt;
 
-            //         delta_x = xt * cos_angle1 - yt * sin_angle1
-            //        delta_y = xt * sin_angle1 + yt * cos_angle1
-
             auto deltaX = xt * cosAngle1 - yt * sinAngle1;
             auto deltaY = xt * sinAngle1 + yt * cosAngle1;
-
-            //         xi = (x[idx]+delta_x - xmin)/cell
-            //        yi = (y[idx]+delta_y - ymin)/cell
-            //
-            //        ix = np.floor(xi)
-            //        iy = np.floor(yi)
-            //
-            //        ix = ix.astype(int)
-            //        iy = iy.astype(int)
-            //
-            //        ix1 = ix+1
-            //        iy1 = iy+1
 
             xi = (x(idx) + deltaX - xmin) / cell;
             yi = (y(idx) + deltaY - ymin) / cell;
@@ -721,25 +653,9 @@ main(int argc, char** argv) -> int
             ix1 = ix + 1;
             iy1 = iy + 1;
 
-            //         if ( ix <= 1 ) or ( ix1 >= nx-1 ) or ( iy <= 1 ) or ( iy1
-            //         >= ny-1 ):
-            //
-            //            break
-
             if ((ix <= 1) || (ix1 >= nx - 1) || (iy <= 1) || (iy1 >= ny - 1)) {
                 break;
             }
-
-            // xi_fract = xi-ix
-            //        yi_fract = yi-iy
-            //
-            //        Fx_lobe = ( xi_fract*( Ztot[iy1,ix1] - Ztot[iy1,ix] ) \
-            //                    + (1.0-xi_fract)*( Ztot[iy,ix1] - Ztot[iy,ix]
-            //                    ) ) / cell
-            //
-            //        Fy_lobe = ( yi_fract*( Ztot[iy1,ix1] - Ztot[iy,ix1] ) \
-            //                    + (1.0-yi_fract)*( Ztot[iy1,ix] - Ztot[iy,ix]
-            //                    ) ) / cell
 
             xiFract = xi - ix;
             yiFract = yi - iy;
@@ -759,35 +675,17 @@ main(int argc, char** argv) -> int
             auto aspectRatio =
               std::min(maxAspectRatio, 1.0 + aspectRatioCoeff * slope);
 
-            //         new_x1 = np.sqrt(lobe_area/np.pi)*np.sqrt(aspect_ratio)
-            //        new_x2 = np.sqrt(lobe_area/np.pi)/np.sqrt(aspect_ratio)
-
             auto newx1 = std::sqrt(lobeArea / M_PI) * std::sqrt(aspectRatio);
             auto newx2 = std::sqrt(lobeArea / M_PI) / std::sqrt(aspectRatio);
 
-            // v1 = np.sqrt(delta_x**2 + delta_y**2)
-
             auto v1 = std::sqrt(std::pow(deltaX, 2) + std::pow(deltaY, 2));
-
-            // v2 = v1 + new_x1
 
             auto v2 = v1 + newx1;
 
-            // v = ( v1 * ( 1.0 - dist_fact ) + v2 * dist_fact ) / v1
-
             auto v = (v1 * (1.0 - distFact) + v2 * distFact) / v1;
-
-            //         x_new = x[idx] + v * delta_x
-            //        y_new = y[idx] + v * delta_y
 
             auto xNew = x(idx) + v * deltaX;
             auto yNew = y(idx) + v * deltaY;
-
-            //         angle[i] = new_angle
-            //        x1[i] = new_x1
-            //        x2[i] = new_x2
-            //        x[i] = x_new
-            //        y[i] = y_new
 
             angle(idx) = newAngle;
             x1(idx) = newx1;
@@ -795,20 +693,8 @@ main(int argc, char** argv) -> int
             x(idx) = xNew;
             y(idx) = yNew;
 
-            // # compute the last lobe
-            //            [ xe , ye ] = ellipse( x[i], y[i], x1[i], x2[i],
-            //            angle[i] , X_circle , Y_circle )
-
             auto [xe, ye] = ellipse(
               x(idx), y(idx), x1(idx), x2(idx), angle(idx), xCircle, yCircle);
-
-            //             min_xe = np.min(xe)
-            //            max_xe = np.max(xe)
-            //
-            //            min_ye = np.min(ye)
-            //            max_ye = np.max(ye)
-            //
-            //            i_parent = parent[i]
 
             auto minXe = xe.minCoeff();
             auto maxXe = xe.maxCoeff();
@@ -817,18 +703,6 @@ main(int argc, char** argv) -> int
             auto maxYe = ye.maxCoeff();
 
             auto iParent = parent(idx);
-
-            //             if ( min_xe < xs[0] ):
-            //
-            //                i_left = 0
-            //
-            //            elif ( min_xe >= xs[nx-1] ):
-            //
-            //                i_left = nx-1
-            //
-            //            else:
-            //
-            //                i_left = np.argmax(xs>min_xe)-2
 
             auto iLeft = [&]() {
                 if (minXe < xs(0)) {
@@ -886,8 +760,6 @@ main(int argc, char** argv) -> int
                 }
             }();
 
-            // Xs_local = Xs[j_bottom:j_top,i_left:i_right]
-            //            Ys_local = Ys[j_bottom:j_top,i_left:i_right]
             Eigen::MatrixXd xsLocal = Xs.block(jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1);
             Eigen::MatrixXd ysLocal = Ys.block(jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1);
 
@@ -955,13 +827,6 @@ main(int argc, char** argv) -> int
               << std::endl;
     std::cout << "Time elapsed " << elapsed.count() << " sec." << std::endl;
     std::cout << "Saving files" << std::endl;
-
-    //     header = "ncols     %s\n" % Zflow.shape[1]
-    //    header += "nrows    %s\n" % Zflow.shape[0]
-    //    header += "xllcorner " + str(lx) +"\n"
-    //    header += "yllcorner " + str(ly) +"\n"
-    //    header += "cellsize " + str(cell) +"\n"
-    //    header += "NODATA_value 0\n"
 
     auto runName = params["run_name"].as<std::string>();
     auto outputFull = runName + "_thickness_full.asc";
