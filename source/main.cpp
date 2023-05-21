@@ -89,17 +89,11 @@ ellipse(double xc,
     auto cos_angle = std::cos(angle * M_PI / 180);
     auto sin_angle = std::sin(angle * M_PI / 180);
 
-    auto x1 = xc + ax1 * cos_angle;
-    auto y1 = yc + ax1 * sin_angle;
-
-    auto x2 = xc - ax2 * sin_angle;
-    auto y2 = yc + ax2 * cos_angle;
-
     auto X = (ax1 * X_circle).eval();
     auto Y = (ax2 * Y_circle).eval();
 
-    auto xe = (x1 + X.array() * cos_angle - Y.array() * sin_angle).eval();
-    auto ye = (y1 + X.array() * sin_angle + Y.array() * cos_angle).eval();
+    auto xe = (xc + X.array() * cos_angle - Y.array() * sin_angle).eval();
+    auto ye = (yc + X.array() * sin_angle + Y.array() * cos_angle).eval();
 
     return { xe, ye };
 }
@@ -225,9 +219,9 @@ main(int argc, char** argv) -> int
       totalVolume / (nFlows * lobeArea * 0.5 * (minNLobes + maxNLobes));
 
     auto npoints = params["npoints"].as<int>();
-    auto t = Eigen::VectorXd::LinSpaced(npoints, 0, 2.0 * M_PI);
-    auto xCircle = t.array().cos();
-    auto yCircle = t.array().sin();
+    auto t = Eigen::VectorXd::LinSpaced(npoints, 0, 2.0 * M_PI).eval();
+    auto xCircle = t.array().cos().eval();
+    auto yCircle = t.array().sin().eval();
 
     auto source = params["source"].as<std::string>();
     auto values = std::array<double, 6>{};
@@ -288,24 +282,17 @@ main(int argc, char** argv) -> int
     // skip restart files
 
     auto nv = 20;
-    auto xvInit = Eigen::VectorXd::LinSpaced(nv, -0.5 * cell, 0.5 * cell);
-    auto yvInit = Eigen::VectorXd::LinSpaced(nv, -0.5 * cell, 0.5 * cell);
-    auto xvMesh = Eigen::MatrixXd::Zero(nv, nv).eval();
-    auto yvMesh = Eigen::MatrixXd::Zero(nv, nv).eval();
+    auto xvYvInit = Eigen::VectorXd::LinSpaced(nv, -0.5 * cell, 0.5 * cell).eval();
+    auto xv = Eigen::MatrixXd::Zero(nv, nv).eval();
+    auto yv = Eigen::MatrixXd::Zero(nv, nv).eval();
     for (auto i = 0; i < nv; ++i) {
-        xvMesh.row(i) = xvInit;
+        xv.col(i) = xvYvInit;
     }
     for (auto i = 0; i < nv; ++i) {
-        yvMesh.col(i) = yvInit;
+        yv.row(i) = xvYvInit;
     }
-    auto xv = Eigen::VectorXd::Zero(nv * nv).eval();
-    auto yv = Eigen::VectorXd::Zero(nv * nv).eval();
-    for (auto i = 0; i < nv; ++i) {
-        xv.segment(i * nv, nv) = xvMesh.row(i);
-    }
-    for (auto i = 0; i < nv; ++i) {
-        yv.segment(i * nv, nv) = yvMesh.col(i);
-    }
+    xv = xv.reshaped(nv * nv, 1);
+    yv = yv.reshaped(nv * nv, 1);
 
     auto nv2 = nv * nv;
 
