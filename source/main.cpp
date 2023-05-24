@@ -49,6 +49,16 @@ createBackup(const std::string& fileName) -> void
     std::filesystem::copy_file(fileName, fmt::format("{}.bak", baseName));
 }
 
+template<typename Floating>
+auto signedFmod(Floating x, Floating y) -> Floating
+{
+    auto result = std::fmod(x, y);
+    if (result < 0) {
+        result += y;
+    }
+    return result;
+}
+
 auto
 loadTxt(const std::string& filename,
         size_t rows,
@@ -125,10 +135,13 @@ localIntersection(const Eigen::MatrixXd& XsLocal,
     Eigen::VectorXd xvLocal = xv.array() - xcE;
     Eigen::VectorXd yvLocal = yv.array() - ycE;
 
-    Eigen::VectorXd XsLocal1d =
-      Eigen::Map<const Eigen::VectorXd>(XsLocal.data(), XsLocal.size());
-    Eigen::VectorXd YsLocal1d =
-      Eigen::Map<const Eigen::VectorXd>(YsLocal.data(), YsLocal.size());
+    Eigen::MatrixXd XsLocalReshaped = XsLocal.transpose();
+    Eigen::MatrixXd YsLocalReshaped = YsLocal.transpose();
+    Eigen::VectorXd XsLocal1d = Eigen::Map<const Eigen::VectorXd>(
+      XsLocalReshaped.data(), XsLocalReshaped.size());
+    Eigen::VectorXd YsLocal1d = Eigen::Map<const Eigen::VectorXd>(
+      YsLocalReshaped.data(), YsLocalReshaped.size());
+
 
     Eigen::VectorXd c1xvPS1yv = c1 * xvLocal.array() + s1 * yvLocal.array();
     Eigen::VectorXd c2yvMS2yv = c2 * yvLocal.array() - s2 * xvLocal.array();
@@ -147,9 +160,9 @@ localIntersection(const Eigen::MatrixXd& XsLocal,
       c1xvPS1yv.array().square() + c2yvMS2yv.array().square();
 
     Eigen::VectorXd term124 = term1 + term2 + term4;
-    Eigen::MatrixXd term356 = (term3 + term5).rowwise() + term6.transpose();
+    Eigen::MatrixXd term356 = (term3 + term5).reshaped(term3.cols(), term3.rows()).colwise() + term6;
 
-    Eigen::MatrixXd termTot = term356.colwise() + term124;
+    Eigen::MatrixXd termTot = term356.rowwise() + term124.transpose();
 
     Eigen::MatrixXd inside = (termTot.array() <= 1.0).cast<double>();
 
@@ -370,6 +383,8 @@ main(int argc, char** argv) -> int
         auto nLobes =
           std::uniform_real_distribution<double>(minNLobes, maxNLobes)(gen);
 
+        nLobesTot += nLobes;
+
         auto thicknessMin =
           2.0 * thicknessRatio / (thicknessRatio + 1.0) * avgLobeThickness;
         auto deltaLobeThickness =
@@ -428,7 +443,7 @@ main(int argc, char** argv) -> int
                (1.0 - yiFract) * (Ztot(iy + 1, ix) - Ztot(iy, ix))) /
               cell;
 
-            auto maxSlopeAngle = std::fmod(
+            auto maxSlopeAngle = signedFmod(
               180.0 + (180.0 * std::atan2(FyTest, FxTest) / M_PI), 360.0);
             auto slope = std::sqrt(std::pow(FxTest, 2) + std::pow(FyTest, 2));
 
@@ -506,7 +521,7 @@ main(int argc, char** argv) -> int
             auto zflowLocal = areaFract;
             auto zflowLocalInt =
               areaFract.unaryExpr([](auto x) { return std::ceil(x); })
-                .cast<int>();
+                .cast<int>().eval();
 
             auto lobeThickness = thicknessMin + (i - 1) * deltaLobeThickness;
 
@@ -577,7 +592,7 @@ main(int argc, char** argv) -> int
 
             auto slope = std::sqrt(std::pow(fxLobe, 2) + std::pow(fyLobe, 2));
             auto maxSlopeAngle =
-              std::fmod(180 + (180 * std::atan2(fyLobe, fxLobe) / M_PI), 360);
+              signedFmod(180 + (180 * std::atan2(fyLobe, fxLobe) / M_PI), 360.0);
 
             auto slopeDeg = 180.0 * std::atan(slope) / M_PI;
 
@@ -610,20 +625,21 @@ main(int argc, char** argv) -> int
             auto sinAngleAvg =
               (1.0 - alfaInertial(i)) * sinAngle2 + alfaInertial(i) * sinAngle1;
 
+            auto angleSigned = 180 * std::atan2(sinAngleAvg, cosAngleAvg) / M_PI;
             auto angleAvg =
-              std::fmod(180 * std::atan2(sinAngleAvg, cosAngleAvg) / M_PI, 360);
+              signedFmod(angleSigned, 360.0);
 
             newAngle = angleAvg;
 
             auto a = std::tan(deg2rad * (newAngle - angle(idx)));
 
             auto xt = [&]() {
-                if (std::cos(deg2rad * (newAngle - angle(idx))) > 0) {
-                    return std::sqrt(x1(idx) * x2(idx) /
-                                     (x2(idx) + x1(idx) * std::pow(a, 2)));
+                auto xt = std::sqrt(std::pow(x1(idx), 2) * std::pow(x2(idx), 2) /
+                                           (std::pow(x2(idx), 2) + std::pow(x1(idx), 2) * std::pow(a, 2)));
+                if (std::cos(deg2rad * (newAngle - angle(idx))) <= 0) {
+                    xt = -xt;
                 }
-                return -std::sqrt(x1(idx) * x2(idx) /
-                                  (x2(idx) + x1(idx) * std::pow(a, 2)));
+                return xt;
             }();
 
             auto yt = a * xt;
@@ -747,8 +763,8 @@ main(int argc, char** argv) -> int
                 }
             }();
 
-            Eigen::MatrixXd xsLocal = Xs.block(jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1);
-            Eigen::MatrixXd ysLocal = Ys.block(jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1);
+            Eigen::MatrixXd xsLocal = Xs.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
+            Eigen::MatrixXd ysLocal = Ys.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
 
             auto areaFract = localIntersection(xsLocal,
                                                ysLocal,
@@ -766,22 +782,22 @@ main(int argc, char** argv) -> int
               zFlowLocal * distInt(idx) + (9999 * zFlowLocal.array() == 0).cast<double>().matrix();
 
             zdist.block(
-              jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1) =
+              jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
               zdist
-                .block(jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1)
+                .block(jBottom, iLeft, jTop - jBottom, iRight - iLeft)
                 .cwiseMin(zDistLocal);
 
             auto lobeThickness = thicknessMin + (i - 1) * deltaLobeThickness;
 
             Zflow.block(
-              jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1) +=
+              jBottom, iLeft, jTop - jBottom, iRight - iLeft) +=
               lobeThickness * zFlowLocal;
             ZtotTemp.block(
-              jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1) =
-              Zs.block(jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1) +
+              jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
+              Zs.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) +
               fillingParameter *
                 Zflow.block(
-                  jBottom, iLeft, jTop - jBottom + 1, iRight - iLeft + 1);
+                  jBottom, iLeft, jTop - jBottom, iRight - iLeft);
 
             jtopArray(idx) = jTop;
             jbottomArray(idx) = jBottom;
