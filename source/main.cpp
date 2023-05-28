@@ -50,7 +50,8 @@ createBackup(const std::string& fileName) -> void
 }
 
 template<typename Floating>
-auto signedFmod(Floating x, Floating y) -> Floating
+auto
+signedFmod(Floating x, Floating y) -> Floating
 {
     auto result = std::fmod(x, y);
     if (result < 0) {
@@ -142,7 +143,6 @@ localIntersection(const Eigen::MatrixXd& XsLocal,
     Eigen::VectorXd YsLocal1d = Eigen::Map<const Eigen::VectorXd>(
       YsLocalReshaped.data(), YsLocalReshaped.size());
 
-
     Eigen::VectorXd c1xvPS1yv = c1 * xvLocal.array() + s1 * yvLocal.array();
     Eigen::VectorXd c2yvMS2yv = c2 * yvLocal.array() - s2 * xvLocal.array();
 
@@ -160,7 +160,8 @@ localIntersection(const Eigen::MatrixXd& XsLocal,
       c1xvPS1yv.array().square() + c2yvMS2yv.array().square();
 
     Eigen::VectorXd term124 = term1 + term2 + term4;
-    Eigen::MatrixXd term356 = (term3 + term5).reshaped(term3.cols(), term3.rows()).colwise() + term6;
+    Eigen::MatrixXd term356 =
+      (term3 + term5).reshaped(term3.cols(), term3.rows()).colwise() + term6;
 
     Eigen::MatrixXd termTot = term356.rowwise() + term124.transpose();
 
@@ -171,7 +172,7 @@ localIntersection(const Eigen::MatrixXd& XsLocal,
     areaFract1d /= nv2;
 
     Eigen::MatrixXd areaFract =
-      Eigen::Map<const Eigen::MatrixXd>(areaFract1d.data(), nxCell, nyCell);
+      areaFract1d.reshaped(nyCell, nxCell).transpose();
 
     return areaFract;
 }
@@ -295,7 +296,8 @@ main(int argc, char** argv) -> int
     // skip restart files
 
     auto nv = 20;
-    auto xvYvInit = Eigen::VectorXd::LinSpaced(nv, -0.5 * cell, 0.5 * cell).eval();
+    auto xvYvInit =
+      Eigen::VectorXd::LinSpaced(nv, -0.5 * cell, 0.5 * cell).eval();
     auto xv = Eigen::MatrixXd::Zero(nv, nv).eval();
     auto yv = Eigen::MatrixXd::Zero(nv, nv).eval();
     for (auto i = 0; i < nv; ++i) {
@@ -321,9 +323,7 @@ main(int argc, char** argv) -> int
 
     auto gslGen = gsl_rng_alloc(gsl_rng_mt19937);
 
-    auto Xs1d = Eigen::VectorXd::Map(Xs.data(), Xs.size());
-    auto Ys1d = Eigen::VectorXd::Map(Ys.data(), Ys.size());
-    auto nxy = Xs1d.size();
+    auto nxy = Xs.size();
 
     auto points = Eigen::MatrixXd::Zero(nxy, 2).eval();
     auto Zflow = Eigen::MatrixXd::Zero(ny, nx).eval();
@@ -407,7 +407,7 @@ main(int argc, char** argv) -> int
 
         auto lobesCounter = 0;
 
-        for (size_t i = 0; i < nInit; i++) {
+        for (int i = 0; i < nInit; i++) {
             if (nFlows == 1) {
                 auto lastPercentage =
                   static_cast<int>(std::round(i * 20.0 / (nInit - 1)) * 5);
@@ -521,7 +521,8 @@ main(int argc, char** argv) -> int
             auto zflowLocal = areaFract;
             auto zflowLocalInt =
               areaFract.unaryExpr([](auto x) { return std::ceil(x); })
-                .cast<int>().eval();
+                .cast<int>()
+                .eval();
 
             auto lobeThickness = thicknessMin + (i - 1) * deltaLobeThickness;
 
@@ -591,8 +592,8 @@ main(int argc, char** argv) -> int
                           cell;
 
             auto slope = std::sqrt(std::pow(fxLobe, 2) + std::pow(fyLobe, 2));
-            auto maxSlopeAngle =
-              signedFmod(180 + (180 * std::atan2(fyLobe, fxLobe) / M_PI), 360.0);
+            auto maxSlopeAngle = signedFmod(
+              180 + (180 * std::atan2(fyLobe, fxLobe) / M_PI), 360.0);
 
             auto slopeDeg = 180.0 * std::atan(slope) / M_PI;
 
@@ -625,17 +626,19 @@ main(int argc, char** argv) -> int
             auto sinAngleAvg =
               (1.0 - alfaInertial(i)) * sinAngle2 + alfaInertial(i) * sinAngle1;
 
-            auto angleSigned = 180 * std::atan2(sinAngleAvg, cosAngleAvg) / M_PI;
-            auto angleAvg =
-              signedFmod(angleSigned, 360.0);
+            auto angleSigned =
+              180 * std::atan2(sinAngleAvg, cosAngleAvg) / M_PI;
+            auto angleAvg = signedFmod(angleSigned, 360.0);
 
             newAngle = angleAvg;
 
             auto a = std::tan(deg2rad * (newAngle - angle(idx)));
 
             auto xt = [&]() {
-                auto xt = std::sqrt(std::pow(x1(idx), 2) * std::pow(x2(idx), 2) /
-                                           (std::pow(x2(idx), 2) + std::pow(x1(idx), 2) * std::pow(a, 2)));
+                auto xt =
+                  std::sqrt(std::pow(x1(idx), 2) * std::pow(x2(idx), 2) /
+                            (std::pow(x2(idx), 2) +
+                             std::pow(x1(idx), 2) * std::pow(a, 2)));
                 if (std::cos(deg2rad * (newAngle - angle(idx))) <= 0) {
                     xt = -xt;
                 }
@@ -763,8 +766,10 @@ main(int argc, char** argv) -> int
                 }
             }();
 
-            Eigen::MatrixXd xsLocal = Xs.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
-            Eigen::MatrixXd ysLocal = Ys.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
+            Eigen::MatrixXd xsLocal =
+              Xs.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
+            Eigen::MatrixXd ysLocal =
+              Ys.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
 
             auto areaFract = localIntersection(xsLocal,
                                                ysLocal,
@@ -779,25 +784,24 @@ main(int argc, char** argv) -> int
 
             Eigen::MatrixXd zFlowLocal = areaFract;
             Eigen::MatrixXd zDistLocal =
-              zFlowLocal * distInt(idx) + (9999 * zFlowLocal.array() == 0).cast<double>().matrix();
+              zFlowLocal * distInt(idx) +
+              (9999 * zFlowLocal.array() == 0).cast<double>().matrix();
 
-            zdist.block(
-              jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
-              zdist
-                .block(jBottom, iLeft, jTop - jBottom, iRight - iLeft)
+            zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
+              zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft)
                 .cwiseMin(zDistLocal);
 
             auto lobeThickness = thicknessMin + (i - 1) * deltaLobeThickness;
 
-            Zflow.block(
-              jBottom, iLeft, jTop - jBottom, iRight - iLeft) +=
+            Zflow.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) +=
               lobeThickness * zFlowLocal;
-            ZtotTemp.block(
-              jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
-              Zs.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) +
-              fillingParameter *
-                Zflow.block(
-                  jBottom, iLeft, jTop - jBottom, iRight - iLeft);
+
+            Eigen::MatrixXd zsBlock =
+              Zs.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
+            Eigen::MatrixXd zflowBlock =
+              Zflow.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
+            ZtotTemp.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
+              zsBlock + fillingParameter * zflowBlock;
 
             jtopArray(idx) = jTop;
             jbottomArray(idx) = jBottom;
@@ -843,14 +847,7 @@ main(int argc, char** argv) -> int
         zflowFile << "NODATA_value 0" << std::endl;
 
         zflowFile << Zflow.colwise().reverse().format(
-          Eigen::IOFormat(5,
-                          Eigen::DontAlignCols,
-                          " ",
-                          "\n",
-                          "",
-                          "",
-                          "",
-                          ""));
+          Eigen::IOFormat(5, Eigen::DontAlignCols, " ", "\n", "", "", "", ""));
     }
     std::cout << outputFull << " saved" << std::endl;
 
@@ -861,7 +858,7 @@ main(int argc, char** argv) -> int
 
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> maskedZflow;
     for (int i = 0; i < 10 * maxLobes; i++) {
-        maskedZflow = (Zflow.array() < i * 0.1 * avgLobeThickness).eval();
+        maskedZflow = (Zflow.array() < i * 0.1 * avgLobeThickness);
 
         auto totalZflow = Zflow.sum();
 
@@ -873,8 +870,6 @@ main(int argc, char** argv) -> int
             std::cout << "Total volume " << cell * cell * totalZflow
                       << " Masked volume " << cell * cell * maskedZflow.sum()
                       << " Volume fraction " << coverageFraction << std::endl;
-
-
 
             auto outputMasked = runName + "_thickness_masked.asc";
             {
@@ -890,14 +885,8 @@ main(int argc, char** argv) -> int
                   << ((1 - maskedZflow.cast<double>().array()) * Zflow.array())
                        .colwise()
                        .reverse()
-                       .format(Eigen::IOFormat(5,
-                                               Eigen::DontAlignCols,
-                                               " ",
-                                               "\n",
-                                               "",
-                                               "",
-                                               "",
-                                               ""));
+                       .format(Eigen::IOFormat(
+                         5, Eigen::DontAlignCols, " ", "\n", "", "", "", ""));
             }
 
             std::cout << outputMasked << " saved" << std::endl;
