@@ -865,10 +865,8 @@ main(int argc, char** argv) -> int
         });
 
         auto totalZflow = Zflow.sum();
-        std::cout << "totalZflow " << totalZflow << std::endl;
 
         auto volumeFraction = maskedZflow.sum() / totalZflow;
-        std::cout << "volumeFraction " << volumeFraction << std::endl;
 
         auto coverageFraction = volumeFraction;
 
