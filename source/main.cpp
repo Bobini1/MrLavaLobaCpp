@@ -526,8 +526,9 @@ main(int argc, char** argv) -> int
 
             auto lobeThickness = thicknessMin + (i - 1) * deltaLobeThickness;
 
+            Eigen::MatrixXd zflowAdded = lobeThickness * zflowLocal;
             Zflow.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) +=
-              lobeThickness * zflowLocal;
+              zflowAdded;
             ZtotTemp.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
               Zs.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) +
               fillingParameter *
@@ -538,14 +539,10 @@ main(int argc, char** argv) -> int
                                     return x * distInt(i) + 9999 * (x == 0);
                                 })
                                 .eval();
-            Eigen::MatrixXd cwisemin =
-              zdistLocal.cast<double>().cwiseMin(
-                zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft));
-            zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) = cwisemin;
-
-            Eigen::MatrixXd zdistBlockView = zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
-            Eigen::MatrixXd zFlowBlockView = Zflow.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
-            Eigen::MatrixXd zTotBlockView = ZtotTemp.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
+            Eigen::MatrixXd cwisemin = zdistLocal.cast<double>().cwiseMin(
+              zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft));
+            zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
+              cwisemin;
 
             jtopArray(i) = jTop;
             jbottomArray(i) = jBottom;
@@ -704,8 +701,8 @@ main(int argc, char** argv) -> int
             x(i) = xNew;
             y(i) = yNew;
 
-            auto [xe, ye] = ellipse(
-              x(i), y(i), x1(i), x2(i), angle(i), xCircle, yCircle);
+            auto [xe, ye] =
+              ellipse(x(i), y(i), x1(i), x2(i), angle(i), xCircle, yCircle);
 
             auto minXe = xe.minCoeff();
             auto maxXe = xe.maxCoeff();
@@ -808,12 +805,6 @@ main(int argc, char** argv) -> int
             ZtotTemp.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
               zsBlock + fillingParameter * zflowBlock;
 
-
-            Eigen::MatrixXd zdistBlockView = zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
-            Eigen::MatrixXd zFlowBlockView = Zflow.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
-            Eigen::MatrixXd zTotBlockView = ZtotTemp.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
-
-
             jtopArray(i) = jTop;
             jbottomArray(i) = jBottom;
             irightArray(i) = iRight;
@@ -867,13 +858,17 @@ main(int argc, char** argv) -> int
 
     auto maskingThreshold = params["masking_threshold"].as<double>();
 
-    Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> maskedZflow;
+    Eigen::MatrixXd maskedZflow;
     for (int i = 0; i < 10 * maxLobes; i++) {
-        maskedZflow = (Zflow.array() < i * 0.1 * avgLobeThickness);
+        maskedZflow = Zflow.unaryExpr([i, avgLobeThickness](auto elem) {
+            return elem < i * 0.1 * avgLobeThickness ? 0 : elem;
+        });
 
         auto totalZflow = Zflow.sum();
+        std::cout << "totalZflow " << totalZflow << std::endl;
 
         auto volumeFraction = maskedZflow.sum() / totalZflow;
+        std::cout << "volumeFraction " << volumeFraction << std::endl;
 
         auto coverageFraction = volumeFraction;
 
@@ -893,11 +888,8 @@ main(int argc, char** argv) -> int
                 zflowMaskedFile << "NODATA_value 0" << std::endl;
 
                 zflowMaskedFile
-                  << ((1 - maskedZflow.cast<double>().array()) * Zflow.array())
-                       .colwise()
-                       .reverse()
-                       .format(Eigen::IOFormat(
-                         5, Eigen::DontAlignCols, " ", "\n", "", "", "", ""));
+                  << maskedZflow.colwise().reverse().format(Eigen::IOFormat(
+                       5, Eigen::DontAlignCols, " ", "\n", "", "", "", ""));
             }
 
             std::cout << outputMasked << " saved" << std::endl;
