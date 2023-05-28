@@ -538,9 +538,14 @@ main(int argc, char** argv) -> int
                                     return x * distInt(i) + 9999 * (x == 0);
                                 })
                                 .eval();
-            zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
+            Eigen::MatrixXd cwisemin =
               zdistLocal.cast<double>().cwiseMin(
                 zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft));
+            zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) = cwisemin;
+
+            Eigen::MatrixXd zdistBlockView = zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
+            Eigen::MatrixXd zFlowBlockView = Zflow.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
+            Eigen::MatrixXd zTotBlockView = ZtotTemp.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
 
             jtopArray(i) = jTop;
             jbottomArray(i) = jBottom;
@@ -693,14 +698,14 @@ main(int argc, char** argv) -> int
             auto xNew = x(idx) + v * deltaX;
             auto yNew = y(idx) + v * deltaY;
 
-            angle(idx) = newAngle;
-            x1(idx) = newx1;
-            x2(idx) = newx2;
-            x(idx) = xNew;
-            y(idx) = yNew;
+            angle(i) = newAngle;
+            x1(i) = newx1;
+            x2(i) = newx2;
+            x(i) = xNew;
+            y(i) = yNew;
 
             auto [xe, ye] = ellipse(
-              x(idx), y(idx), x1(idx), x2(idx), angle(idx), xCircle, yCircle);
+              x(i), y(i), x1(i), x2(i), angle(i), xCircle, yCircle);
 
             auto minXe = xe.minCoeff();
             auto maxXe = xe.maxCoeff();
@@ -708,7 +713,7 @@ main(int argc, char** argv) -> int
             auto minYe = ye.minCoeff();
             auto maxYe = ye.maxCoeff();
 
-            auto iParent = parent(idx);
+            auto iParent = parent(i);
 
             auto iLeft = [&]() {
                 if (minXe < xs(0)) {
@@ -773,18 +778,18 @@ main(int argc, char** argv) -> int
 
             auto areaFract = localIntersection(xsLocal,
                                                ysLocal,
-                                               x(idx),
-                                               y(idx),
-                                               x1(idx),
-                                               x2(idx),
-                                               angle(idx),
+                                               x(i),
+                                               y(i),
+                                               x1(i),
+                                               x2(i),
+                                               angle(i),
                                                xv,
                                                yv,
                                                nv2);
 
             Eigen::MatrixXd zFlowLocal = areaFract;
             Eigen::MatrixXd zDistLocal =
-              zFlowLocal * distInt(idx) +
+              zFlowLocal * distInt(i) +
               (9999 * zFlowLocal.array() == 0).cast<double>().matrix();
 
             zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
@@ -803,10 +808,16 @@ main(int argc, char** argv) -> int
             ZtotTemp.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
               zsBlock + fillingParameter * zflowBlock;
 
-            jtopArray(idx) = jTop;
-            jbottomArray(idx) = jBottom;
-            irightArray(idx) = iRight;
-            ileftArray(idx) = iLeft;
+
+            Eigen::MatrixXd zdistBlockView = zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
+            Eigen::MatrixXd zFlowBlockView = Zflow.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
+            Eigen::MatrixXd zTotBlockView = ZtotTemp.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
+
+
+            jtopArray(i) = jTop;
+            jbottomArray(i) = jBottom;
+            irightArray(i) = iRight;
+            ileftArray(i) = iLeft;
 
             lobesCounter++;
 
