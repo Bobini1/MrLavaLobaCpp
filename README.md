@@ -1,6 +1,6 @@
 # MrLavaLoba
 
-This is the MrLavaLoba project.
+Stochastic model for lava flows.
 
 # Building and installing
 
