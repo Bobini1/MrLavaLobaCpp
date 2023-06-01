@@ -845,7 +845,7 @@ main(int argc, char** argv) -> int
         zflowFile << "NODATA_value 0" << std::endl;
 
         zflowFile << Zflow.colwise().reverse().format(
-          Eigen::IOFormat(5, Eigen::DontAlignCols, " ", "\n", "", "", "", ""));
+          Eigen::IOFormat(5, 0, " ", "\n", "", "", "", ""));
     }
     std::cout << outputFull << " saved" << std::endl;
 
@@ -887,8 +887,8 @@ main(int argc, char** argv) -> int
                 zflowMaskedFile << "NODATA_value 0" << std::endl;
 
                 zflowMaskedFile
-                  << maskedZflow.colwise().reverse().format(Eigen::IOFormat(
-                       5, Eigen::DontAlignCols, " ", "\n", "", "", "", ""));
+                  << ZflowMasked.colwise().reverse().format(Eigen::IOFormat(
+                       5, 0, " ", "\n", "", "", "", ""));
             }
 
             std::cout << outputMasked << " saved" << std::endl;
