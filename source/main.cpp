@@ -288,10 +288,7 @@ main(int argc, char** argv) -> int
         Ys.col(i) = ys;
     }
 
-    auto Zs = Eigen::MatrixXd::Zero(ny, nx).eval();
-    for (auto i = 0; i < ny; ++i) {
-        Zs.row(i) = arr.row(ny - i - 1);
-    }
+    Eigen::MatrixXd Zs = arr.colwise().reverse();
 
     // skip restart files
 
