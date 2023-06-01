@@ -531,15 +531,13 @@ main(int argc, char** argv) -> int
               fillingParameter *
                 Zflow.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft);
 
-            auto zdistLocal = zflowLocalInt
-                                .unaryExpr([&](auto x) {
-                                    return x * distInt(i) + 9999 * (x == 0);
-                                })
+            auto zdistLocal = (zflowLocalInt.array() * distInt(i) +
+                               9999 * (zflowLocal.array() == 0).cast<int>())
+                                .matrix()
                                 .eval();
-            Eigen::MatrixXd cwisemin = zdistLocal.cast<double>().cwiseMin(
-              zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft));
             zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
-              cwisemin;
+              zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft)
+                .cwiseMin(zdistLocal.cast<double>());
 
             jtopArray(i) = jTop;
             jbottomArray(i) = jBottom;
