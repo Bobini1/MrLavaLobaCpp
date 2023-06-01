@@ -780,13 +780,14 @@ main(int argc, char** argv) -> int
                                                nv2);
 
             Eigen::MatrixXd zFlowLocal = areaFract;
+
             Eigen::MatrixXd zDistLocal =
               zFlowLocal * distInt(i) +
-              (9999 * zFlowLocal.array() == 0).cast<double>().matrix();
+              (9999.0 * (zFlowLocal.array() == 0).cast<double>()).matrix();
 
             zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft) =
               zdist.block(jBottom, iLeft, jTop - jBottom, iRight - iLeft)
-                .cwiseMin(zDistLocal);
+                .cwiseMin(zDistLocal.cast<double>());
 
             auto lobeThickness = thicknessMin + (i - 1) * deltaLobeThickness;
 
@@ -853,21 +854,26 @@ main(int argc, char** argv) -> int
 
     auto maskingThreshold = params["masking_threshold"].as<double>();
 
-    Eigen::MatrixXd maskedZflow;
+    Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> ZflowMask;
     for (int i = 0; i < 10 * maxLobes; i++) {
-        maskedZflow = Zflow.unaryExpr([i, avgLobeThickness](auto elem) {
-            return elem < i * 0.1 * avgLobeThickness ? 0 : elem;
+        ZflowMask = Zflow.unaryExpr([i, avgLobeThickness](auto elem) {
+            return elem > i * 0.1 * avgLobeThickness;
         });
 
         auto totalZflow = Zflow.sum();
 
-        auto volumeFraction = maskedZflow.sum() / totalZflow;
+        Eigen::MatrixXd ZflowMasked =
+          Zflow.array() * ZflowMask.cast<double>().array();
+
+        auto maskedSum = ZflowMasked.sum();
+
+        auto volumeFraction = maskedSum / totalZflow;
 
         auto coverageFraction = volumeFraction;
 
         if (coverageFraction < maskingThreshold) {
             std::cout << "Total volume " << cell * cell * totalZflow
-                      << " Masked volume " << cell * cell * maskedZflow.sum()
+                      << " Masked volume " << cell * cell * maskedSum
                       << " Volume fraction " << coverageFraction << std::endl;
 
             auto outputMasked = runName + "_thickness_masked.asc";
@@ -901,9 +907,9 @@ main(int argc, char** argv) -> int
         zdistFile << "cellsize " << cell << std::endl;
         zdistFile << "NODATA_value 0" << std::endl;
 
-        zdistFile << zdist.colwise().reverse().format(
+        zdistFile << zdist.cast<int>().colwise().reverse().format(
           Eigen::IOFormat(Eigen::FullPrecision,
-                          Eigen::DontAlignCols,
+                          0,
                           " ",
                           "\n",
                           "",
@@ -914,7 +920,7 @@ main(int argc, char** argv) -> int
 
     std::cout << outputDist << " saved" << std::endl;
 
-    zdist = ((1 - maskedZflow.array()).cast<double>() * zdist.array()).eval();
+    zdist = (ZflowMask.cast<double>().array() * zdist.array());
 
     auto outputDistMasked = runName + "_dist_masked.asc";
     {
@@ -926,9 +932,9 @@ main(int argc, char** argv) -> int
         zdistMaskedFile << "cellsize " << cell << std::endl;
         zdistMaskedFile << "NODATA_value 0" << std::endl;
 
-        zdistMaskedFile << zdist.matrix().colwise().reverse().format(
+        zdistMaskedFile << zdist.cast<int>().matrix().colwise().reverse().format(
           Eigen::IOFormat(Eigen::FullPrecision,
-                          Eigen::DontAlignCols,
+                          0,
                           " ",
                           "\n",
                           "",
