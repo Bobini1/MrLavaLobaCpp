@@ -49,16 +49,6 @@ createBackup(const std::string& fileName) -> void
     std::filesystem::copy_file(fileName, fmt::format("{}.bak", baseName));
 }
 
-template<typename Floating>
-auto
-signedFmod(Floating x, Floating y) -> Floating
-{
-    auto result = std::fmod(x, y);
-    if (result < 0) {
-        result += y;
-    }
-    return result;
-}
 
 auto
 loadTxt(const std::string& filename,
@@ -440,7 +430,7 @@ main(int argc, char** argv) -> int
                (1.0 - yiFract) * (Ztot(iy + 1, ix) - Ztot(iy, ix))) /
               cell;
 
-            auto maxSlopeAngle = signedFmod(
+            auto maxSlopeAngle = std::remainder(
               180.0 + (180.0 * std::atan2(FyTest, FxTest) / M_PI), 360.0);
             auto slope = std::sqrt(std::pow(FxTest, 2) + std::pow(FyTest, 2));
 
@@ -589,7 +579,7 @@ main(int argc, char** argv) -> int
                           cell;
 
             auto slope = std::sqrt(std::pow(fxLobe, 2) + std::pow(fyLobe, 2));
-            auto maxSlopeAngle = signedFmod(
+            auto maxSlopeAngle = std::remainder(
               180 + (180 * std::atan2(fyLobe, fxLobe) / M_PI), 360.0);
 
             auto slopeDeg = 180.0 * std::atan(slope) / M_PI;
@@ -625,7 +615,7 @@ main(int argc, char** argv) -> int
 
             auto angleSigned =
               180 * std::atan2(sinAngleAvg, cosAngleAvg) / M_PI;
-            auto angleAvg = signedFmod(angleSigned, 360.0);
+            auto angleAvg = std::remainder(angleSigned, 360.0);
 
             newAngle = angleAvg;
 
